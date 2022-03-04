@@ -4,6 +4,7 @@ using EventStore.Core.Index.Hashes;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
 
+	//qq try to let this just be a datastructure rather than contain scavenge logic
 	public class InMemoryMagicMap<TStreamId> :
 		IMagicForAccumulator<TStreamId>,
 		IMagicForCalculator<TStreamId>,
@@ -12,8 +13,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		private readonly CollisionDetector<TStreamId> _collisionDetector;
 
 		// these are what would be persisted
-		private readonly InMemoryCollisionResolver<TStreamId, StreamHash, StreamData> _metadatas;
-		private readonly InMemoryCollisionResolver<TStreamId, StreamHash, DiscardPoint> _scavengeableStreams;
+		private readonly InMemoryCollisionResolver<TStreamId, StreamData> _metadatas;
 
 		// these would just be in mem even in proper implementation
 		private readonly ILongHasher<TStreamId> _hasher;
@@ -23,18 +23,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			ILongHasher<TStreamId> hasher,
 			IIndexReaderForAccumulator<TStreamId> indexReaderForAccumulator) {
 
-			_metadatas = new();
-			_scavengeableStreams = new();
-
+			//qq inject this so that in log v3 we can have a trivial implementation
 			//qq to save us having to look up the stream names repeatedly
 			// irl this would be a lru cache.
 			var cache = new Dictionary<ulong, TStreamId>();
-
+			_collisionDetector = new CollisionDetector<TStreamId>(HashInUseBefore);
+			_metadatas = new(hasher);
 			_hasher = hasher;
 			_indexReaderForAccumulator = indexReaderForAccumulator;
-
-			//qq inject this so that in log v3 we can have a trivial implementation
-			_collisionDetector = new CollisionDetector<TStreamId>(HashInUseBefore);
 
 			bool HashInUseBefore(TStreamId recordStream, long recordPosition, out TStreamId candidateCollidee) {
 				var hash = _hasher.Hash(recordStream);
@@ -56,36 +52,29 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 
+
+
 		//
 		// FOR ACCUMULATOR
 		//
 
 		public void NotifyForCollisions(TStreamId streamId, long position) {
-			_collisionDetector.Add(streamId, position);
+			// but consider that when we add this to the collision detector, that there might be a collision
+			// and we might need to promote some of the handles.
+			//qq want to make use of the _s?
+			_ = _collisionDetector.DetectCollisions(streamId, position, out _);
 		}
 
-		public void NotifyForScavengeableStreams(TStreamId streamId) {
-			// register this stream as a scavengeable stream
-			//qq is it ok that this is clearing the discard point? probably...
-			// because the discard points have to be recalculated after accumulation
-			// anyway (i think).
-			//qq might this want a cache to make adding quick when it has already been added
-			// could it even share the cache that the collision detector uses?
-			_scavengeableStreams[streamId] = new();
-		}
-
+		// the accumulator needs to be able to set and get the metadatas. it always has the stream ids.
 		public StreamData GetStreamData(TStreamId streamId) {
 			if (!_metadatas.TryGetValue(streamId, out var streamData))
 				streamData = StreamData.Empty;
 			return streamData;
 		}
 
-		looks // something has to decide whether to store this as a collision or as a hash
-			  //and that decision could be made by the collision resolver itself
-			  // or we could pass in a IndexKeyThing that decides for it??
-			  //qq 
+		// this sets the stream metadata in such a way that it can be retrieved later
 		public void SetStreamData(TStreamId streamId, StreamData streamData) {
-			_metadatas[streamId] = streamData;
+			//qq _metadatas[streamId] = streamData;
 		}
 
 
@@ -98,15 +87,25 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// FOR CALCULATOR
 		//
 
-		public IEnumerable<(IndexKeyThing<TStreamId>, StreamData)> RelevantStreams {
+		// the calculator needs to get the accumulated data for each scavengeable stream
+		// it does not have and does not need to know the non colliding stream names.
+		public IEnumerable<(StreamHandle<TStreamId>, StreamData)> StreamsWithMetadata {
+			//qq consider making this a method?
+			//qqqq not all of the scavengable streams have streamdata - the metadata streams dont
+			// whose responsibility is that to worry about the fact that metadata streams have fixed
+			// metadata themselves? its probably not the datastructure
+			// but we dont want to iterate through all the scavengeable steams looking up the metadata
+			// we want to iterate through all the metadatas and then iterate through all the 
+			// metadata streams. but that is a detail of the scavenge state.
+
 			get {
-				foreach (var x in _collisionDetector.)
-				throw new NotImplementedException();
+				return _metadatas.Enumerate();
 			}
 		}
 
-		public void SetDiscardPoint(IndexKeyThing<TStreamId> stream, DiscardPoint dp) {
-			_scavengeableStreams[stream] = dp;
+		public void SetDiscardPoint(StreamHandle<TStreamId> stream, DiscardPoint dp) {
+			throw new NotImplementedException();
+//			_scavengeableStreams[stream] = dp;
 		}
 
 

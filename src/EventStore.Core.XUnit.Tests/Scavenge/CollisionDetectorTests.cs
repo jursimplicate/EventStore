@@ -1,22 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using EventStore.Core.Index.Hashes;
 using EventStore.Core.TransactionLog.Scavenging;
 using Xunit;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
-	class MockHasher : ILongHasher<string> {
-		public ulong Hash(string x) =>
-			(ulong)(x.Length == 0 ? 0 : x[0].GetHashCode());
-	}
-
 	public class CollisionDetectorTests {
 		public static IEnumerable<object[]> TheCases() {
 			var none = Array.Empty<string>();
 			
 			// the first letter of the stream name determines the the hash
-			// each row is a record but we don't care much about it, just its stream name.
+			// each row represents a record but here the only thing we need to know about it is
+			// its streamName and the collisions it generates when we add it.
 			yield return Case(
 				"seen stream before. was a collision first time we saw it",
 				("a-stream1", none),
@@ -78,7 +73,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			Assert.NotNull(caseName);
 
 			var log = data.Select(x => x.StreamName).ToArray();
-			var hasher = new MockHasher();
+			var hasher = new FirstCharacterHasher();
 
 			// index maps hashes to lists of log positions
 			var index = new Dictionary<ulong, List<int>>();
@@ -96,8 +91,6 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				entries.Insert(0, i);
 			}
 
-			// maps hashes to stream names
-			var cache = new Dictionary<ulong, string>();
 
 			// simulates looking in the index for records with the current hash up to
 			// the all stream positionLimit. exclude the positionLimit itself because that is the
@@ -105,12 +98,19 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			// irl this isn't _that_ expensive, but wont be that cheap either
 			// and we'll be calling it for ~every record. so we could definitely do with a cache
 			// as long as that doesn't break any of the properties that we require
+			//qq see comment above InMemoryAccumulator.Accumulate(EventRecord) for another option for how
+			// the cache could work
+			var cache = new Dictionary<ulong, string>(); // maps hashes to stream names
 			bool HashInUseBefore(string recordStream, long recordPosition, out string candidateCollidee) {
 				var hash = hasher.Hash(recordStream);
 
 				if (cache.TryGetValue(hash, out candidateCollidee))
 					return true;
 
+				//qq a bloom filter could assist before checking the ptables if we had one that was built
+				// up to this point in the log only - if the stream _hash_ is not present in the bloom filter
+				// then we know that it is not a collision, and in fact will not be present in the ptables
+				// at all.
 				// simulate hitting the ptables. if we find any entries for this hash
 				// then look up the record for one of them to get the stream name
 				if (index.TryGetValue(hash, out var entries)) {
@@ -142,7 +142,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				foreach (var newCollision in data[i].NewCollisions)
 					expectedCollisions.Add(newCollision);
 
-				sut.Add(data[i].StreamName, i);
+				sut.DetectCollisions(data[i].StreamName, i, out _);
 				Assert.Equal(
 					expectedCollisions.OrderBy(x => x),
 					sut.GetAllCollisions());

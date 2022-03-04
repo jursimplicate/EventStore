@@ -16,26 +16,60 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			new InMemoryScavengeInstructions<TStreamId>();
 
 		// iterate through all the scavengeable streams. determine the discard point for each one.
+		//
+		// we need to do this for the streams with metadata, and the metadata streams.
+		// there is a 1-1 correspondance between these.
+		// so it would be nice if we could just iterate through one or the other.
+		//
+		// is storing the two hashes enough.
+		//   - say neither collides
+		//       then it is fine.
+		//   - say the stream collides (and we are have a handle to it)
+		//       then the handle will resolve it for us
+		//   - say the metastream collides
+		//       $$a => 5
+		//       $$b => 5
+		//       then we notice that 5 collides
+		//       so we get all the metadata streams that map to 5
+		//       calculate their normal streams, and see which one hashes to us.
+
+		//   - say they both collide. worst case.
+		//       we will know we are looking at stream a from its handle.
+		//       so we will know that stream $$a is what we want.
+		//       a => 5
+		//       b => 5
+		//       $$a => 5
+		//       $$b => 5
+		//qq ^ remember to implement this resolution
+		//
+		//
+		// the upshot of this is we can have a CollisionResolver that maps streams to metadata for that
+		// stream and _imply_ from it what the metadatastream was and what its discard point is without
+		// having to store a separate record for it.
+
 		// for the ones that do not collide, we can do this in the index-only.
 		// for the ones that do collide
 		//qqq for the ones that do collide can we just not bother to scavenge it for now, but we
 		// do want to prove out that it will work later.
 		//qq do we need to calculate a discard point for every stream, or can we keep using a discard
-		// point that was calculated on a previous scavenge? the discard point
+		// point that was calculated on a previous scavenge?
 		public void Calculate(ScavengePoint scavengePoint, IMagicForCalculator<TStreamId> scavengeState) {
 			//qq the order that we calculate the discard points in isn't important is it?
-			foreach (var (stream, streamData) in scavengeState.RelevantStreams) {
+			// iterate through the streams with metadata, calculating discard points
+			// we will need to scavenge the metadata streams too, but calculating the discard points
+			// for them is trivial
+			foreach (var (streamHandle, streamData) in scavengeState.StreamsWithMetadata) {
 				var dp = CalculateDiscardPointForStream(
-					stream,
+					streamHandle,
 					streamData,
 					scavengePoint);
 
-				scavengeState.SetDiscardPoint(stream, dp);
+				scavengeState.SetDiscardPoint(streamHandle, dp);
 			}
 		}
 
 		private DiscardPoint CalculateDiscardPointForStream(
-			IndexKeyThing<TStreamId> stream,
+			StreamHandle<TStreamId> streamHandle,
 			StreamData streamData,
 			ScavengePoint scavengePoint) {
 
@@ -64,7 +98,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			var fromEventNumber = 0L;
 			while (true) {
 				//qq limit the read to the scavengepoint too?
-				var slice = _index.ReadStreamForward(stream, fromEventNumber, maxCount);
+				var slice = _index.ReadStreamForward(streamHandle, fromEventNumber, maxCount);
 				//qq naive, we dont need to check every event, we could check the last one
 				// and if that is to be discarded then we can discard everything in this slice.
 				foreach (var evt in slice) {
@@ -77,7 +111,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					// calculate.
 					if (ShouldKeep(
 							scavengePoint,
-							stream,
+							streamHandle,
 							streamData,
 							evt.EventNumber,
 							evt.LogPosition)) {
@@ -103,12 +137,12 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 
 			//qq need to set the discard point.
-			return new DiscardPoint(123); //qqqqqq
+			//return new DiscardPoint(123); //qqqqqq
 		}
 
 		private bool ShouldKeep(
 			ScavengePoint scavengePoint,
-			IndexKeyThing<TStreamId> stream,
+			StreamHandle<TStreamId> stream,
 			StreamData streamData,
 			long eventNumber,
 			long logPosition) {
@@ -192,7 +226,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		bool IsExpiredByMaxCount(
 			ScavengePoint scavengePoint,
-			IndexKeyThing<TStreamId> stream,
+			StreamHandle<TStreamId> stream,
 			StreamData streamData,
 			long eventNumber) {
 

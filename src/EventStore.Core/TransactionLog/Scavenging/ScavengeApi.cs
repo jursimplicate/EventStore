@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using EventStore.Core.Data;
-using EventStore.Core.LogAbstraction;
 using EventStore.Core.TransactionLog.Chunks.TFChunk;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
@@ -23,7 +21,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	}
 
 	// the accumulator reads through the log up to the scavenge point
-	// its purpose is to scope down to the streams that might need scavenging.
+	// its purpose is to do any log scanning that is necessary for a scavenge _only once_
+	// accumulating whatever state is necessary to avoid subsequent scans.
+	//
+	// in practice it
+	//  1. finds the scavengable streams, which are
+	//     1. streams with metadata (user and system)
+	//     2. metadata streams
+	//  2. spots hash collisions
+	//  3. notes down metadata as it finds it. 
 	public interface IAccumulator<TStreamId> {
 		void Accumulate(ScavengePoint scavengePoint);
 		//qq got separate apis for adding and getting state cause they'll probably be done
@@ -32,11 +38,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	}
 
 	//qqqq consider api. consider name
-	//qq calculates the discardpoint for each relevant streams.
+	// the purpose of the calculator is to calculate what needs to be scavenged for a given scavenge point
+	// i.e. it calculates the discardpoint for each scavengeable stream.
 	// we don't calculate this during the accumulation phase because the decisionpoints would keep
 	// moving as we go (e.g. time is passing for maxage, new events would move the dp on maxcount streams)
 	// so to avoid doing duplicate work we dont do that until calculation phase.
 	// it also means the accumulator only needs to actually process a small amount of data in the log.
+	// note that this is a bit different to noting down the metdata as we go, since this only changes when
+	// someone actually writes a new metadta record, which is presumably not tooo often.
 	// the structure this produces is enough to quickly scavenge the chunks and ptables without
 	// (typically) doing any further lookups or calculation.
 	public interface ICalculator<TStreamId> {
@@ -180,7 +189,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public interface IIndexForScavenge<TStreamId> {
 		//qq maxposition  / positionlimit instead of scavengepoint?
 		//qq better name than 'stream'...
-		long GetLastEventNumber(IndexKeyThing<TStreamId> stream, long scavengePoint);
+		long GetLastEventNumber(StreamHandle<TStreamId> stream, long scavengePoint);
 
 		//qq name min age or maxage or 
 		//long GetLastEventNumber(TStreamId streamId, DateTime age);
@@ -188,33 +197,42 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//qq maybe we can do better than allocating an array for the return
 		//qqqqq should take a scavengepoint/maxpos?
 		IndexReadResultForScavenge[] ReadStreamForward(
-			IndexKeyThing<TStreamId> stream,
+			StreamHandle<TStreamId> stream,
 			long fromEventNumber,
 			int maxCount);
 	}
 
-	//qq consider name
-	public struct IndexKeyThing {
-		public static IndexKeyThing<TStreamId> CreateForHash<TStreamId>(ulong streamHash) {
-			return new IndexKeyThing<TStreamId>(true, default, streamHash);
+	// Refers to a stream by name or by hash
+	public struct StreamHandle {
+		public static StreamHandle<TStreamId> ForHash<TStreamId>(ulong streamHash) {
+			return new StreamHandle<TStreamId>(isHash: true, default, streamHash);
 		}
 
-		public static IndexKeyThing<TStreamId> CreateForStreamId<TStreamId>(TStreamId streamId) {
-			return new IndexKeyThing<TStreamId>(true, streamId, default);
+		public static StreamHandle<TStreamId> ForStreamId<TStreamId>(TStreamId streamId) {
+			return new StreamHandle<TStreamId>(isHash: false, streamId, default);
 		}
 	}
 
+	// Refers to a stream by name or by hash
+	// this unifies the entries, some just have the hash (when we know they do not collide)
+	// some contain the full stream id (when they do collide)
 	//qq consider explicit layout
-	public readonly struct IndexKeyThing<TStreamId> {
+	public readonly struct StreamHandle<TStreamId> {
 		public readonly bool IsHash;
 		public readonly TStreamId StreamId;
 		public readonly ulong StreamHash;
 
-		public IndexKeyThing(bool isHash, TStreamId streamId, ulong streamHash) {
+		//qq sort out the order here so if the flag is true then it is using the second arg
+		public StreamHandle(bool isHash, TStreamId streamId, ulong streamHash) {
 			IsHash = isHash;
 			StreamId = streamId;
 			StreamHash = streamHash;
 		}
+
+		public override string ToString() =>
+			IsHash
+				? $"Hash: {StreamHash}"
+				: $"Name: {StreamId}";
 	}
 
 	public interface ChunkTimeStampOptimisation {
@@ -225,14 +243,36 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		bool Foo(DateTime dateTime, long position);
 	}
 
+	//qq according to IndexReader.GetStreamLastEventNumberCached
+	// if the original stream is hard deleted then the metadatastream is treated as deleted too
+	// according to IndexReader.GetStreamMetadataCached
+	// the metadata for a metadatastream cannot be overwritten
+	//qq so if we get a metadata FOR a metadata stream, we should ignore it.
+	// if we get a hard delete for a metadata stream
+	//qq for all of thes consider how much precision (and therefore bits) we need
+	//qq look at the places where we construct this, are we always setting what we need
+	// might want to make an explicit constructor. can we easily find the places we are calling 'with' ?
 	public record StreamData {
 		public static StreamData Empty = new(); //qq maybe dont need
 
+		public StreamData() {
+		}
+
+		public ulong MetadataStreamHash { get; init; }
 		public long? MaxCount { get; init; }
-		public TimeSpan? MaxAge { get; init; }
+		public TimeSpan? MaxAge { get; init; } //qq can have limited precision?
 		public long? TruncateBefore { get; init; }
-		//qq public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
+
 		public bool IsHardDeleted { get; init; }
+		//qq somewhere should read this... or if not we don't need to store it -
+		//   perhaps updating the MetadataDiscardPoint and clearing the members above here
+		//   would be sufficient in the accumulator would be sufficient instead of setting this
+		public bool IsMetadataStreamHardDeleted { get; init; }
+
+		public DiscardPoint? DiscardPoint { get; init; } //qq do we need as many bits as this
+		public DiscardPoint? MetadataDiscardPoint { get; init; } //qq do we need as many bits as this
+
+		//qq public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
 	}
 
 	public record ScavengePoint {

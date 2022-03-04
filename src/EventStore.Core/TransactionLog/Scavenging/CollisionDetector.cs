@@ -7,6 +7,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class CollisionDetector<T> {
 		// checks if the hash is in use before this item at this position. returns true if so.
 		// if returning true then out parameter is one of the items that hashes to that hash
+		//qq why is it a candidateColliddee exactly, i think (check?) because it might be 'itself'
+		// in which case it isn't a collision. it would be better to be called hashUser
 		public delegate bool HashInUseBefore(T item, long itemPosition, out T candidateCollidee);
 
 		private static EqualityComparer<T> TComparer { get; } = EqualityComparer<T>.Default;
@@ -28,6 +30,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		public bool IsCollision(T item) => _collisions.Contains(item);
+		//qq is this used in a path where allocations are ok.. albeit a pretty small one. would IEnumerable better, consider threading
 		public T[] GetAllCollisions() => _collisions.OrderBy(x => x).ToArray();
 
 		// allllright. when we are adding an item, either:
@@ -96,26 +99,39 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//     find the remaining events. but what if the last event is beyond the scavenge point, would
 		//     that be bad?
 
-		public void Add(T item, long itemPosition) {
+		// Adds an item from the given position. Detects if it collides with other items prior to that
+		// position.
+		// collision is only defined when returning NewCollision.
+		// in this way we can tell when anything that was not colliding becomes colliding.
+		public CollisionResult DetectCollisions(T item, long itemPosition, out T collision) {
 			_lastPosition = itemPosition;
 
 			if (IsCollision(item)) {
-				return; // previously known collision. 1a or 1b.
+				collision = default;
+				return CollisionResult.OldCollision; // previously known collision. 1a or 1b.
 			}
 
 			// collision not previously known, but might be a new one now.
-			if (!_hashInUseBefore(item, itemPosition, out var candidateCollidee)) {
-				return; // hash not in use, can be no collision. 2b
+			if (!_hashInUseBefore(item, itemPosition, out collision)) {
+				return CollisionResult.NoCollision; // hash not in use, can be no collision. 2b
 			}
 
 			// hash in use, but maybe by the item itself.
-			if (TComparer.Equals(candidateCollidee, item)) {
-				return; // no collision with oneself. 1c
+			if (TComparer.Equals(collision, item)) {
+				return CollisionResult.NoCollision; // no collision with oneself. 1c
 			}
 
 			// hash in use by a different item! found new collision. 2a
 			_collisions.Add(item);
-			_collisions.Add(candidateCollidee);
+			_collisions.Add(collision);
+			return CollisionResult.NewCollision;
 		}
+	}
+
+	//qq own file
+	public enum CollisionResult {
+		NoCollision,
+		NewCollision, // collided with something that was not previously in a collision
+		OldCollision, // collided with something that was already in a collision
 	}
 }

@@ -33,19 +33,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// up in the log.
 
 	// Together these are the scavengable streams. We need a DiscardPoint for each.
-	// We only need to store metadata for the user streams with metadata since the metadata for metadatastreams is implicit.
+	// We only need to store metadata for the user streams with metadata since the metadata for
+	// metadatastreams is implicit.
 
 	// accumulator iterates through the log, spotting metadata records
 	// put in the data that the chunk and ptable scavenging require
 	public interface IMagicForAccumulator<TStreamId> {
 		// call this for each record as we accumulate through the log so that we can spot every hash
 		// collision to save ourselves work later.
-		//qq maybe prefer passing in a single arg to show that the position is that of the record
+		//qq maybe prefer passing in a single arg (the record) and getting its streamid and position
 		void NotifyForCollisions(TStreamId streamId, long position);
-
-		// this causes the stream to be considered by the scavenge process. make sure we call it
-		// for every scavengable stream.
-		public void NotifyForScavengeableStreams(TStreamId streamId);
 
 		//qq the API here can either expose a way for the accumulator to get and set the stream data
 		// OR it can provide a way to just be told there is new metadata or tombstones and it can
@@ -65,7 +62,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//            - (make sure we dont scavenge that record while referencing it.. or if we legit can,
 		//               that something sensible happens)
 		//            - just update it. no collision.
-		//            - (note we can cache the (hash -> stream name) lookup, populate it as we call Set as well)
+		//            - (note we can cache the (hash -> stream name) lookup, populate it as we call Set as
+		//               well)
 		//        - else (different stream name)
 		//            - collision detected!
 		//            - store the streamName and streamData in another datastructure (collision structure)
@@ -80,12 +78,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 	//qqqq this might _be_ IScavengeState. perhaps rename it
 	public interface IMagicForCalculator<TStreamId> {
-		// Calculator iterates through the relevant streams and their metadata
-		//qq note we dont have to _store_ the metadatas for the metadatastreams internally, we could store them separately.
-		IEnumerable<(IndexKeyThing<TStreamId> stream, StreamData)> RelevantStreams { get; }
+		// Calculator iterates through the scavengable streams and their metadata
+		//qq note we dont have to _store_ the metadatas for the metadatastreams internally, we could
+		// store them separately. (i think i meant e.g. store their address in the log)
+		IEnumerable<(StreamHandle<TStreamId> stream, StreamData)> StreamsWithMetadata { get; }
 
 		//qq we set a discard point for every relevant stream.
-		void SetDiscardPoint(IndexKeyThing<TStreamId> stream, DiscardPoint dp);
+		void SetDiscardPoint(StreamHandle<TStreamId> stream, DiscardPoint dp);
 	}
 
 
@@ -100,5 +99,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 	//qq note, probably need to complain if the ptable is a 32bit table
 	//qq maybe we need a collision free core that is just a map
-	//qq just a thought, lots of the metadatas might be equal, we might be able to store each unique instance once. implementation detail.
+	//qq just a thought, lots of the metadatas might be equal, we might be able to store each uniqueb
+	// instance once. implementation detail.
 }

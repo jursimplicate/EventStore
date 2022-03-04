@@ -9,6 +9,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		private readonly IMetastreamLookup<TStreamId> _metastreamLookup;
 		private readonly IChunkReaderForAccumulation<TStreamId> _chunkReader;
 		private readonly InMemoryMagicMap<TStreamId> _magic;
+		private readonly ILongHasher<TStreamId> _hasher = null; //qq set in ctor
 
 		public InMemoryAccumulator(
 			ILongHasher<TStreamId> hasher,
@@ -51,41 +52,73 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 		}
 
+		// For every (//qq ?) event we need to see if its stream collides.
+		// its not so bad, because we have a cache
+		//qq - how does the cache work, we could just cache the fact that we have already
+		//   notified for this stream and not bother notifying again (we should still checkpoint that we got this far though)
+		//   OR we can cache the user of a hash against that hash. which has the advantage that if we
+		//      do come across a hash collision it might already be in the cache. but this is so rare
+		//      as to not be a concern. pick whichever turns out to be more obviously correct
 		private void Accumulate(RecordForAccumulator<TStreamId>.EventRecord record) {
-			//qq hmm does this need to be the prepare log position, the commit log position, or, in fact,
-			// both?
+			//qq hmm for transactions does this need to be the prepare log position,
+			// the commit log position, or, in fact, both?
 			_magic.NotifyForCollisions(record.StreamId, record.LogPosition);
 		}
 
+		// For every metadata record
+		//   - check if the stream collides
+		//   - register the metadata against the original stream.
+		//         this causes scavenging of the original stream and the metadata stream.
+		//qq definitely add a test that metadata records get scavenged though
 		private void Accumulate(RecordForAccumulator<TStreamId>.MetadataRecord record) {
 			_magic.NotifyForCollisions(record.StreamId, record.LogPosition);
 
 			var originalStream = _metastreamLookup.OriginalStreamOf(record.StreamId);
 
-			//qq not certain whether we need to notify both here, or whether we just
-			// notify the original stream and in the calculator that entry _implies_ both
-			//qq definitely add a test that metadata records get scavenged though
-			_magic.NotifyForScavengeableStreams(record.StreamId);
-			_magic.NotifyForScavengeableStreams(originalStream);
+			if (_metastreamLookup.IsMetaStream(originalStream)) {
+				// it is possible, though very unusual, to write a metadata _for_ a metadata stream
+				// these are ignored by reads anyway, so we ignore them here. in this way we keep
+				// streamData only for normal streams.
+				return;
+			}
 
 			var streamData = _magic.GetStreamData(originalStream);
 			//qqqq set the new stream data, leave the harddeleted flag alone.
 			// consider if streamdata really wants to be immutable. also c# records not supported in v5
 			var newStreamData = streamData with {
-				MaxAge = null,
+				MetadataStreamHash = _hasher.Hash(record.StreamId),
+				MaxAge = null, //qq actually set these correctly
 				MaxCount = 345,
 				TruncateBefore = 567,
+				DiscardPoint = null, //qq ok/want to clear this? calc will recalc
+				MetadataDiscardPoint = null, //qq record.EventNumber (or evtnuber - 1)
+				//IsHardDeleted = ,
+				//IsMetadataStreamHardDeleted = 
 			};
+
 			_magic.SetStreamData(originalStream, newStreamData);
 		}
 
 		private void Accumulate(RecordForAccumulator<TStreamId>.TombStoneRecord record) {
 			_magic.NotifyForCollisions(record.StreamId, record.LogPosition);
-			_magic.NotifyForScavengeableStreams(record.StreamId);
 
-			var streamData = _magic.GetStreamData(record.StreamId);
-			var newStreamData = streamData with { IsHardDeleted = true };
-			_magic.SetStreamData(record.StreamId, newStreamData);
+			// it is possible, though maybe very unusual, to find a tombstone in a metadata stream
+			if (_metastreamLookup.IsMetaStream(record.StreamId)) {
+				// get the streamData for the original stream, tell it the metadata is deleted
+				var originalStream = _metastreamLookup.OriginalStreamOf(record.StreamId);
+				var streamData = _magic.GetStreamData(originalStream);
+				streamData = streamData with {
+					IsMetadataStreamHardDeleted = true
+				};
+				_magic.SetStreamData(originalStream, streamData);
+			} else {
+				// get the streamData for the stream, tell it the stream is deleted
+				var streamData = _magic.GetStreamData(record.StreamId);
+				streamData = streamData with {
+					IsHardDeleted = true
+				};
+				_magic.SetStreamData(record.StreamId, streamData);
+			}
 		}
 
 		private void AccumulateTimeStamps(int ChunkNumber, DateTime createdAt) {

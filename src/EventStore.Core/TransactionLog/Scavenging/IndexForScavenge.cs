@@ -12,7 +12,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		//qq todo respect scavengepoint
-		public long GetLastEventNumber(IndexKeyThing<TStreamId> stream, long scavengePoint) {
+		public long GetLastEventNumber(StreamHandle<TStreamId> stream, long scavengePoint) {
 			if (stream.IsHash) {
 				throw new NotImplementedException();
 				//qq index only!
@@ -39,7 +39,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//}
 
 		public IndexReadResultForScavenge[] ReadStreamForward(
-			IndexKeyThing<TStreamId> stream,
+			StreamHandle<TStreamId> stream,
 			long fromEventNumber,
 			int maxCount) {
 
