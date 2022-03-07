@@ -96,6 +96,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			public long LogPosition { get; set; }
 		}
 
+		//qq make sure we only instantiate these for metadata records in metadata streams
 		public class MetadataRecord : RecordForAccumulator<TStreamId> {
 			public TStreamId StreamId { get; set; }
 			public long LogPosition { get; set; }
@@ -181,7 +182,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	}
 
 
-	public readonly struct IndexReadResultForScavenge {
+	public readonly struct EventInfo {
 		public readonly long LogPosition;
 		public readonly long EventNumber;
 	}
@@ -196,7 +197,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		//qq maybe we can do better than allocating an array for the return
 		//qqqqq should take a scavengepoint/maxpos?
-		IndexReadResultForScavenge[] ReadStreamForward(
+		//qq better name that indicates that this doesn't return the events - 
+		// in fact it doesn't usually touch the log at all
+		EventInfo[] ReadEventInfoForward(
 			StreamHandle<TStreamId> stream,
 			long fromEventNumber,
 			int maxCount);
@@ -252,27 +255,31 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//qq for all of thes consider how much precision (and therefore bits) we need
 	//qq look at the places where we construct this, are we always setting what we need
 	// might want to make an explicit constructor. can we easily find the places we are calling 'with' ?
-	public record StreamData {
-		public static StreamData Empty = new(); //qq maybe dont need
+	public record MetastreamData {
+		public static readonly MetastreamData Empty = new(); //qq maybe dont need
 
-		public StreamData() {
+		public MetastreamData() {
 		}
 
-		public ulong MetadataStreamHash { get; init; }
+		public ulong OriginalStreamHash { get; init; }
 		public long? MaxCount { get; init; }
 		public TimeSpan? MaxAge { get; init; } //qq can have limited precision?
 		public long? TruncateBefore { get; init; }
 
-		public bool IsHardDeleted { get; init; }
-		//qq somewhere should read this... or if not we don't need to store it -
-		//   perhaps updating the MetadataDiscardPoint and clearing the members above here
-		//   would be sufficient in the accumulator would be sufficient instead of setting this
-		public bool IsMetadataStreamHardDeleted { get; init; }
+		//qq consider if we want to have TB or jsut set the discard point directly
+		// might need to store the TB separately if we need to recalculate the DP using
+		// the TB later.
+		public DiscardPoint? DiscardPoint { get; init; }
 
-		public DiscardPoint? DiscardPoint { get; init; } //qq do we need as many bits as this
-		public DiscardPoint? MetadataDiscardPoint { get; init; } //qq do we need as many bits as this
+		//qq probably dont need this, but we could easily populate it if it is useful later.
+		//public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
+	}
 
-		//qq public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
+	//qq probably want to just use the DiscardPoint directly if thats all that ends up in here.
+	public record OriginalStreamData {
+		//qq make sure that Empty really means empty and not, say, discard everything.
+		public static readonly OriginalStreamData Empty = new(); //qq maybe dont need
+		public DiscardPoint DiscardPoint { get; init; }
 	}
 
 	public record ScavengePoint {

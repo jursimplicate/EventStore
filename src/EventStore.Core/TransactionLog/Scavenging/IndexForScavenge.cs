@@ -38,7 +38,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//	return 0;
 		//}
 
-		public IndexReadResultForScavenge[] ReadStreamForward(
+		public EventInfo[] ReadEventInfoForward(
 			StreamHandle<TStreamId> stream,
 			long fromEventNumber,
 			int maxCount) {

@@ -52,6 +52,11 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				new Record("b-$$a-1", "metadata1"));
 		}
 
+		//qq now that we are keying on the metadta streams, does that mean that we don't
+		// need to many cases here? like whether or not the original streams collide might not be
+		// relevant any more.
+		//
+		//qqqqqqqqqqqqq do we want to bake tombstones into here as well
 		[Fact]
 		public void metadata_colliding() {
 			RunScenario(
@@ -132,9 +137,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				sut.DetectCollisions(record.StreamName, i);
 
 				if (metastreamLookup.IsMetaStream(record.StreamName)) {
-					var originalStream = metastreamLookup.OriginalStreamOf(record.StreamName);
-
-					sut[originalStream] = record.Metadata;
+					sut[record.StreamName] = record.Metadata;
 				}
 			}
 
@@ -176,8 +179,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			var expectedMetadataPerStream = new Dictionary<string, string>();
 			foreach (var record in log) {
 				if (record.Metadata is not null) {
-					var originalStream = metastreamLookup.OriginalStreamOf(record.StreamName);
-					expectedMetadataPerStream[originalStream] = record.Metadata;
+					expectedMetadataPerStream[record.StreamName] = record.Metadata;
 				}
 			}
 

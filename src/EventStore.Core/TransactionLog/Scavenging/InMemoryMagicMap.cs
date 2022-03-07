@@ -13,7 +13,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		private readonly CollisionDetector<TStreamId> _collisionDetector;
 
 		// these are what would be persisted
-		private readonly InMemoryCollisionResolver<TStreamId, StreamData> _metadatas;
+		private readonly InMemoryCollisionResolver<TStreamId, MetastreamData> _metadatas;
+		private readonly InMemoryCollisionResolver<TStreamId, OriginalStreamData> _originalStreamDatas;
 
 		// these would just be in mem even in proper implementation
 		private readonly ILongHasher<TStreamId> _hasher;
@@ -28,8 +29,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// irl this would be a lru cache.
 			var cache = new Dictionary<ulong, TStreamId>();
 			_collisionDetector = new CollisionDetector<TStreamId>(HashInUseBefore);
-			_metadatas = new(hasher);
 			_hasher = hasher;
+			_metadatas = new(_hasher);
+			_originalStreamDatas = new(_hasher);
 			_indexReaderForAccumulator = indexReaderForAccumulator;
 
 			bool HashInUseBefore(TStreamId recordStream, long recordPosition, out TStreamId candidateCollidee) {
@@ -58,6 +60,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// FOR ACCUMULATOR
 		//
 
+		// we store different data depending on whether the stream is a metadata stream
+		// or an original stream
+
 		public void NotifyForCollisions(TStreamId streamId, long position) {
 			// but consider that when we add this to the collision detector, that there might be a collision
 			// and we might need to promote some of the handles.
@@ -65,19 +70,28 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			_ = _collisionDetector.DetectCollisions(streamId, position, out _);
 		}
 
+		//qqqqq rename to GetMetaStreamData or something like that
 		// the accumulator needs to be able to set and get the metadatas. it always has the stream ids.
-		public StreamData GetStreamData(TStreamId streamId) {
+		public MetastreamData GetMetastreamData(TStreamId streamId) {
 			if (!_metadatas.TryGetValue(streamId, out var streamData))
-				streamData = StreamData.Empty;
+				streamData = MetastreamData.Empty;
 			return streamData;
 		}
 
 		// this sets the stream metadata in such a way that it can be retrieved later
-		public void SetStreamData(TStreamId streamId, StreamData streamData) {
+		public void SetMetastreamData(TStreamId streamId, MetastreamData streamData) {
 			//qq _metadatas[streamId] = streamData;
 		}
 
+		public OriginalStreamData GetOriginalStreamData(TStreamId streamId) {
+			if (!_originalStreamDatas.TryGetValue(streamId, out var streamData))
+				streamData = OriginalStreamData.Empty;
+			return streamData;
+		}
 
+		public void SetOriginalStreamData(TStreamId streamId, OriginalStreamData streamData) {
+			//qq _originalStreamDatas[streamId] = streamData;
+		}
 
 
 
@@ -89,7 +103,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		// the calculator needs to get the accumulated data for each scavengeable stream
 		// it does not have and does not need to know the non colliding stream names.
-		public IEnumerable<(StreamHandle<TStreamId>, StreamData)> StreamsWithMetadata {
+		public IEnumerable<(StreamHandle<TStreamId>, MetastreamData)> MetastreamDatas {
 			//qq consider making this a method?
 			//qqqq not all of the scavengable streams have streamdata - the metadata streams dont
 			// whose responsibility is that to worry about the fact that metadata streams have fixed
@@ -103,9 +117,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 		}
 
-		public void SetDiscardPoint(StreamHandle<TStreamId> stream, DiscardPoint dp) {
+		public void SetDiscardPoint(
+			StreamHandle<TStreamId> streamHandle,
+			DiscardPoint discardPoint) {
+
 			throw new NotImplementedException();
 //			_scavengeableStreams[stream] = dp;
+		}
+
+		public DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle) {
+			throw new NotImplementedException(); //qqqq
 		}
 
 

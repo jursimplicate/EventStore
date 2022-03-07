@@ -61,63 +61,61 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//      as to not be a concern. pick whichever turns out to be more obviously correct
 		private void Accumulate(RecordForAccumulator<TStreamId>.EventRecord record) {
 			//qq hmm for transactions does this need to be the prepare log position,
-			// the commit log position, or, in fact, both?
+			// the commit log position, or, in fact, both? can metadata be written as part of a transaction
+			// if so does that mean we need to do anything special when handling a metadata record
 			_magic.NotifyForCollisions(record.StreamId, record.LogPosition);
 		}
 
 		// For every metadata record
 		//   - check if the stream collides
-		//   - register the metadata against the original stream.
+		//   - cache the metadata against the metadatastream handle.
 		//         this causes scavenging of the original stream and the metadata stream.
 		//qq definitely add a test that metadata records get scavenged though
 		private void Accumulate(RecordForAccumulator<TStreamId>.MetadataRecord record) {
 			_magic.NotifyForCollisions(record.StreamId, record.LogPosition);
 
-			var originalStream = _metastreamLookup.OriginalStreamOf(record.StreamId);
+			var streamData = _magic.GetMetastreamData(record.StreamId);
 
-			if (_metastreamLookup.IsMetaStream(originalStream)) {
-				// it is possible, though very unusual, to write a metadata _for_ a metadata stream
-				// these are ignored by reads anyway, so we ignore them here. in this way we keep
-				// streamData only for normal streams.
-				return;
-			}
-
-			var streamData = _magic.GetStreamData(originalStream);
 			//qqqq set the new stream data, leave the harddeleted flag alone.
 			// consider if streamdata really wants to be immutable. also c# records not supported in v5
+			var originalStream = _metastreamLookup.OriginalStreamOf(record.StreamId);
 			var newStreamData = streamData with {
-				MetadataStreamHash = _hasher.Hash(record.StreamId),
+				OriginalStreamHash = _hasher.Hash(originalStream),
 				MaxAge = null, //qq actually set these correctly
 				MaxCount = 345,
 				TruncateBefore = 567,
-				DiscardPoint = null, //qq ok/want to clear this? calc will recalc
-				MetadataDiscardPoint = null, //qq record.EventNumber (or evtnuber - 1)
+				//qq probably only want to increase the discard point here, in order to respect tombstone
+				// although... if there was a tombstone then this record shouldn't exist, and if it does we probably
+				// want to ignore it
+				DiscardPoint = null, //qq record.EventNumber (or evtnuber - 1)
 				//IsHardDeleted = ,
 				//IsMetadataStreamHardDeleted = 
 			};
 
-			_magic.SetStreamData(originalStream, newStreamData);
+			_magic.SetMetastreamData(record.StreamId, newStreamData);
 		}
 
+		// For every tombstone
+		//   - check if the stream collids
+		//   - set the discard point for the stream that the tombstone was found in to discard
+		//     everything before the tombstone
 		private void Accumulate(RecordForAccumulator<TStreamId>.TombStoneRecord record) {
 			_magic.NotifyForCollisions(record.StreamId, record.LogPosition);
 
 			// it is possible, though maybe very unusual, to find a tombstone in a metadata stream
 			if (_metastreamLookup.IsMetaStream(record.StreamId)) {
-				// get the streamData for the original stream, tell it the metadata is deleted
-				var originalStream = _metastreamLookup.OriginalStreamOf(record.StreamId);
-				var streamData = _magic.GetStreamData(originalStream);
+				var streamData = _magic.GetMetastreamData(record.StreamId);
 				streamData = streamData with {
-					IsMetadataStreamHardDeleted = true
+					DiscardPoint = DiscardPoint.Tombstone,
 				};
-				_magic.SetStreamData(originalStream, streamData);
+				_magic.SetMetastreamData(record.StreamId, streamData);
 			} else {
 				// get the streamData for the stream, tell it the stream is deleted
-				var streamData = _magic.GetStreamData(record.StreamId);
-				streamData = streamData with {
-					IsHardDeleted = true
+				var originalStreamData = _magic.GetOriginalStreamData(record.StreamId);
+				originalStreamData = originalStreamData with {
+					DiscardPoint = DiscardPoint.Tombstone,
 				};
-				_magic.SetStreamData(record.StreamId, streamData);
+				_magic.SetOriginalStreamData(record.StreamId, originalStreamData);
 			}
 		}
 
