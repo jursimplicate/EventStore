@@ -1176,25 +1176,25 @@ namespace EventStore.Core {
 			if (newScavenge) {
 				//qq iron this out, possibly more needs to be in the logformat, depending on what is
 				// affected by the log format ofc.
-				var accumulator = new InMemoryAccumulator<TStreamId>(
+				var accumulator = new Accumulator<TStreamId>(
 					logFormat.LongHasher,
 					logFormat.Metastreams,
 					logFormat.ChunkReaderForAccumulation);
 
-				var calculator = new InMemoryCalculator<TStreamId>(
+				var calculator = new Calculator<TStreamId>(
 					new IndexForScavenge<TStreamId>(_readIndex));
 
-				var chunkExecutor = new InMemoryChunkExecutor<TStreamId>(
+				var chunkExecutor = new ChunkExecutor<TStreamId>(
 					new MockChunkManagerForScavenge(), //qq mock
 					logFormat.ChunkReaderForScavenge);
 
-				var indexExecutor = new InMemoryIndexExecutor<TStreamId>();
+				var indexExecutor = new IndexExecutor<TStreamId>();
 
 				var magic = new InMemoryMagicMap<TStreamId>(
 					logFormat.LongHasher,
 					new InMemoryIndexReaderForAccumulator<TStreamId>());
 
-				var scavenger = new InMemoryScavenger<TStreamId>(
+				var scavenger = new Scavenger<TStreamId>(
 					magic,
 					accumulator,
 					calculator,

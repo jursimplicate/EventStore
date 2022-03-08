@@ -10,6 +10,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public readonly string Value;
 	}
 
+	public interface IScavengeState<TStreamId> :
+		IMagicForAccumulator<TStreamId>,
+		IMagicForCalculator<TStreamId>,
+		IMagicForIndexExecutor<TStreamId>,
+		IMagicForChunkExecutor<TStreamId> {
+	}
+
 	// there are three kinds of streams that we might want to remove events from
 	//    - User streams with metadata.
 	//    - Metadata streams.

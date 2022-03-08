@@ -3,14 +3,12 @@ using EventStore.Core.Index.Hashes;
 using EventStore.Core.LogAbstraction;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	//qq hopefully this ends up being the accumulator logic and has nothing 'in memory',
-	// with the in memory aspect being injected in.
-	public class InMemoryAccumulator<TStreamId> : IAccumulator<TStreamId> {
+	public class Accumulator<TStreamId> : IAccumulator<TStreamId> {
 		private readonly IMetastreamLookup<TStreamId> _metastreamLookup;
 		private readonly IChunkReaderForAccumulation<TStreamId> _chunkReader;
-		private readonly ILongHasher<TStreamId> _hasher = null; //qq set in ctor
+		private readonly ILongHasher<TStreamId> _hasher = null; //qqqqqqqqq set in ctor
 
-		public InMemoryAccumulator(
+		public Accumulator(
 			ILongHasher<TStreamId> hasher,
 			IMetastreamLookup<TStreamId> metastreamLookup,
 			IChunkReaderForAccumulation<TStreamId> chunkReader) {
@@ -60,7 +58,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//   OR we can cache the user of a hash against that hash. which has the advantage that if we
 		//      do come across a hash collision it might already be in the cache. but this is so rare
 		//      as to not be a concern. pick whichever turns out to be more obviously correct
-		private void Accumulate(
+		private static void Accumulate(
 			RecordForAccumulator<TStreamId>.EventRecord record,
 			IMagicForAccumulator<TStreamId> magic) {
 			//qq hmm for transactions does this need to be the prepare log position,

@@ -1,7 +1,7 @@
 ﻿using EventStore.Core.Index;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	public class InMemoryIndexExecutor<TStreamId> : IIndexExecutor<TStreamId> {
+	public class IndexExecutor<TStreamId> : IIndexExecutor<TStreamId> {
 
 		public void Execute(IMagicForIndexExecutor<TStreamId> instructions) {
 			//qq fill this in, scavenge the ptables
