@@ -5,7 +5,7 @@ using EventStore.Core.Index.Hashes;
 namespace EventStore.Core.TransactionLog.Scavenging {
 
 	//qq try to let this just be a datastructure rather than contain scavenge logic
-	public class InMemoryMagicMap<TStreamId> : IScavengeState<TStreamId> {
+	public class InMemoryScavengeState<TStreamId> : IScavengeState<TStreamId> {
 
 		private readonly CollisionDetector<TStreamId> _collisionDetector;
 
@@ -19,7 +19,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		private readonly ILongHasher<TStreamId> _hasher;
 		private readonly IIndexReaderForAccumulator<TStreamId> _indexReaderForAccumulator;
 
-		public InMemoryMagicMap(
+		public InMemoryScavengeState(
 			ILongHasher<TStreamId> hasher,
 			IIndexReaderForAccumulator<TStreamId> indexReaderForAccumulator) {
 

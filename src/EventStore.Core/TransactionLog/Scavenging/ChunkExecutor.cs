@@ -13,7 +13,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			_chunkReader = chunkReader;
 		}
 
-		public void Execute(IMagicForChunkExecutor<TStreamId> instructions) {
+		public void Execute(IScavengeStateForChunkExecutor<TStreamId> instructions) {
 			foreach (var chunkInstructions in instructions.ChunkInstructionss) {
 				ExecuteChunk(instructions, chunkInstructions);
 			}
@@ -21,7 +21,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		private void ExecuteChunk(
-			IMagicForChunkExecutor<TStreamId> scavengeInstructions,
+			IScavengeStateForChunkExecutor<TStreamId> scavengeInstructions,
 			IReadOnlyChunkScavengeInstructions<TStreamId> chunkInstructions) {
 
 			var threshold = 1000; //qq make configurable

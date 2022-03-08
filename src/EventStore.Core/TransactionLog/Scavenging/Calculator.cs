@@ -81,7 +81,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// point that was calculated on a previous scavenge?
 		public void Calculate(
 			ScavengePoint scavengePoint,
-			IMagicForCalculator<TStreamId> scavengeState) {
+			IScavengeStateForCalculator<TStreamId> scavengeState) {
 
 			// iterate through the metadata streams, for each one use the metadata to modify the
 			// discard point of the stream and store it. along the way note down which chunks

@@ -1,20 +1,14 @@
 ﻿using System.Collections.Generic;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	//qq prolly dont need these once the dust settles
-	public readonly struct StreamHash {
-		public readonly ulong Value;
-	}
-
-	public readonly struct StreamName {
-		public readonly string Value;
-	}
-
+	//qq the purpose of this datastructure is to narrow the scope of what needs to be
+	// calculated based on what we can glean by tailing the log,
+	// without doubling up on what we can easily look up later.
 	public interface IScavengeState<TStreamId> :
-		IMagicForAccumulator<TStreamId>,
-		IMagicForCalculator<TStreamId>,
-		IMagicForIndexExecutor<TStreamId>,
-		IMagicForChunkExecutor<TStreamId> {
+		IScavengeStateForAccumulator<TStreamId>,
+		IScavengeStateForCalculator<TStreamId>,
+		IScavengeStateForIndexExecutor<TStreamId>,
+		IScavengeStateForChunkExecutor<TStreamId> {
 	}
 
 	// there are three kinds of streams that we might want to remove events from
@@ -32,10 +26,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 	// accumulator iterates through the log, spotting metadata records
 	// put in the data that the chunk and ptable scavenging require
-	public interface IMagicForAccumulator<TStreamId> {
+	public interface IScavengeStateForAccumulator<TStreamId> {
 		// call this for each record as we accumulate through the log so that we can spot every hash
 		// collision to save ourselves work later.
 		//qq maybe prefer passing in a single arg (the record) and getting its streamid and position
+		//qq mabe rename if we want the state to not be containing logic
 		void NotifyForCollisions(TStreamId streamId, long position);
 
 		//qq the API here can either expose a way for the accumulator to get and set the stream data
@@ -73,7 +68,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	}
 
 	//qqqq this might _be_ IScavengeState. perhaps rename it
-	public interface IMagicForCalculator<TStreamId> {
+	public interface IScavengeStateForCalculator<TStreamId> {
 		// Calculator iterates through the scavengable streams and their metadata
 		//qq note we dont have to _store_ the metadatas for the metadatastreams internally, we could
 		// store them separately. (i think i meant e.g. store their address in the log)
@@ -88,12 +83,12 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 	// Then the executor:
 
-	public interface IMagicForChunkExecutor<TStreamId> {
+	public interface IScavengeStateForChunkExecutor<TStreamId> {
 		IEnumerable<IReadOnlyChunkScavengeInstructions<TStreamId>> ChunkInstructionss { get; }
 		DiscardPoint GetDiscardPoint(TStreamId streamId);
 	}
 
-	public interface IMagicForIndexExecutor<TStreamId> {
+	public interface IScavengeStateForIndexExecutor<TStreamId> {
 		//qq needs to work for metadata streams and also for 
 		bool IsCollision(ulong streamHash);
 		DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle);

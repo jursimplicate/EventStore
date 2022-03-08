@@ -31,10 +31,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//  2. spots hash collisions
 	//  3. notes down metadata as it finds it. 
 	public interface IAccumulator<TStreamId> {
-		void Accumulate(ScavengePoint scavengePoint, IMagicForAccumulator<TStreamId> magic);
+		void Accumulate(ScavengePoint scavengePoint, IScavengeStateForAccumulator<TStreamId> state);
 		//qq got separate apis for adding and getting state cause they'll probably be done
 		// by different logical processes
-		IMagicForCalculator<TStreamId> ScavengeState { get; }
+		IScavengeStateForCalculator<TStreamId> ScavengeState { get; }
 	}
 
 	//qqqq consider api. consider name
@@ -50,17 +50,17 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// (typically) doing any further lookups or calculation.
 	public interface ICalculator<TStreamId> {
 		// processed so far.
-		void Calculate(ScavengePoint scavengePoint, IMagicForCalculator<TStreamId> source);
+		void Calculate(ScavengePoint scavengePoint, IScavengeStateForCalculator<TStreamId> source);
 	}
 
 	// the executor does the actual removal of the log records and index records
 	// should be very rare to do any further lookups at this point.
 	public interface IChunkExecutor<TStreamId> {
-		void Execute(IMagicForChunkExecutor<TStreamId> instructions);
+		void Execute(IScavengeStateForChunkExecutor<TStreamId> instructions);
 	}
 
 	public interface IIndexExecutor<TStreamId> {
-		void Execute(IMagicForIndexExecutor<TStreamId> instructions);
+		void Execute(IScavengeStateForIndexExecutor<TStreamId> instructions);
 	}
 
 
@@ -120,14 +120,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 
 
-	//qq the purpose of this datastructure is to narrow the scope of what needs to be
-	// calculated based on what we can glean by tailing the log,
-	// without doubling up on what we can easily look up later.
-	// for now IMagicForCalculator<TStreamId> is serving this purpose.
-	//public interface IScavengeState<TStreamId> {
-	//	//
-	//	IEnumerable<(TStreamId, StreamData)> RelevantStreams { get; }
-	//}
 
 
 
@@ -138,7 +130,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// lookups. expect that we will probably may as well preserve that information so
 	// that the execution itself can be done quickly, prolly without additional lookups
 	//
-	//qqq this is now IMagicForExecutor
+	//qqq this is now IStateForChunkExecutor
 	//public interface IScavengeInstructions<TStreamId> {
 	//	//qqqqq is chunknumber the logical chunk number?
 	//	//qq do we want to store a separate file per logical chunk or per physical (merged) chunk.

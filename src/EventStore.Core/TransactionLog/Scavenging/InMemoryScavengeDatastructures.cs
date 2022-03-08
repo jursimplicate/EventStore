@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	//qq this may end up being a wrapper around the magic map and not a memory specific implementation
+	//qq this may end up being a wrapper around the state and not a memory specific implementation
 	// at all.
 	//qq instructions are not necessarily the right name for this now.
 	//public class InMemoryScavengeInstructions<TStreamId> : IScavengeInstructions<TStreamId> {

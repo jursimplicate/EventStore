@@ -3,7 +3,7 @@
 namespace EventStore.Core.TransactionLog.Scavenging {
 	public class IndexExecutor<TStreamId> : IIndexExecutor<TStreamId> {
 
-		public void Execute(IMagicForIndexExecutor<TStreamId> instructions) {
+		public void Execute(IScavengeStateForIndexExecutor<TStreamId> instructions) {
 			//qq fill this in, scavenge the ptables
 			var ptables = new[] { 2, 3 }; //qq temp
 			foreach (var ptable in ptables) {
@@ -12,7 +12,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		public void ExecutePTable(
-			IMagicForIndexExecutor<TStreamId> magic,
+			IScavengeStateForIndexExecutor<TStreamId> state,
 			int ptable) {
 
 			//qq get the index entries from the ptable
@@ -33,10 +33,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				if (currentHash != indexEntry.Stream || currentHashIsCollision) {
 					// on to a new stream, get its discard point.
 					currentHash = indexEntry.Stream;
-					currentHashIsCollision = magic.IsCollision(indexEntry.Stream);
+					currentHashIsCollision = state.IsCollision(indexEntry.Stream);
 
 					discardPoint = GetDiscardPoint(
-						magic,
+						state,
 						currentHash.Value,
 						currentHashIsCollision);
 				}
@@ -52,7 +52,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		public DiscardPoint GetDiscardPoint(
-			IMagicForIndexExecutor<TStreamId> magic,
+			IScavengeStateForIndexExecutor<TStreamId> state,
 			ulong hash,
 			bool isCollision) {
 
@@ -61,12 +61,12 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				// really for, and look up the discard point by streamId.
 				TStreamId streamId = default; //qq _index.ReadEvent(indexEntry.Position).StreamId;
 				var streamHandle = StreamHandle.ForStreamId(streamId);
-				return magic.GetDiscardPoint(streamHandle);
+				return state.GetDiscardPoint(streamHandle);
 
 			} else {
 				// not a collision, we can get the discard point by hash.
 				var streamHandle = StreamHandle.ForHash<TStreamId>(hash);
-				return magic.GetDiscardPoint(streamHandle);
+				return state.GetDiscardPoint(streamHandle);
 			}
 
 		}
