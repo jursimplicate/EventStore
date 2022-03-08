@@ -1179,20 +1179,27 @@ namespace EventStore.Core {
 				var accumulator = new InMemoryAccumulator<TStreamId>(
 					logFormat.LongHasher,
 					logFormat.Metastreams,
-					logFormat.ChunkReaderForAccumulation,
-					new InMemoryIndexReaderForAccumulator<TStreamId>());
+					logFormat.ChunkReaderForAccumulation);
 
 				var calculator = new InMemoryCalculator<TStreamId>(
 					new IndexForScavenge<TStreamId>(_readIndex));
 
-				var executor = new InMemoryExecutor<TStreamId>(
+				var chunkExecutor = new InMemoryChunkExecutor<TStreamId>(
 					new MockChunkManagerForScavenge(), //qq mock
 					logFormat.ChunkReaderForScavenge);
 
+				var indexExecutor = new InMemoryIndexExecutor<TStreamId>();
+
+				var magic = new InMemoryMagicMap<TStreamId>(
+					logFormat.LongHasher,
+					new InMemoryIndexReaderForAccumulator<TStreamId>());
+
 				var scavenger = new InMemoryScavenger<TStreamId>(
+					magic,
 					accumulator,
 					calculator,
-					executor,
+					chunkExecutor,
+					indexExecutor,
 					Db);
 
 				var storageScavenger = new NewStorageScavenger<TStreamId>(scavenger);

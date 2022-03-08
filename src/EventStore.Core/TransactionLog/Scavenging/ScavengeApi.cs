@@ -31,7 +31,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//  2. spots hash collisions
 	//  3. notes down metadata as it finds it. 
 	public interface IAccumulator<TStreamId> {
-		void Accumulate(ScavengePoint scavengePoint);
+		void Accumulate(ScavengePoint scavengePoint, IMagicForAccumulator<TStreamId> magic);
 		//qq got separate apis for adding and getting state cause they'll probably be done
 		// by different logical processes
 		IMagicForCalculator<TStreamId> ScavengeState { get; }
@@ -51,20 +51,17 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public interface ICalculator<TStreamId> {
 		// processed so far.
 		void Calculate(ScavengePoint scavengePoint, IMagicForCalculator<TStreamId> source);
-		//qq for now having separate getter rather than returning from calculate
-		// might want it to be continuous, or to maybe process ones that have been
-		IScavengeInstructions<TStreamId> ScavengeInstructions { get; }
 	}
 
 	// the executor does the actual removal of the log records and index records
 	// should be very rare to do any further lookups at this point.
-	public interface IExecutor<TStreamId> {
-		void ExecuteChunks(IScavengeInstructions<TStreamId> instructions);
-		void ExecuteIndex(IScavengeInstructions<TStreamId> instructions);
+	public interface IChunkExecutor<TStreamId> {
+		void Execute(IMagicForChunkExecutor<TStreamId> instructions);
 	}
 
-
-
+	public interface IIndexExecutor<TStreamId> {
+		void Execute(IMagicForIndexExecutor<TStreamId> instructions);
+	}
 
 
 	public interface IChunkManagerForScavenge {
@@ -141,13 +138,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// lookups. expect that we will probably may as well preserve that information so
 	// that the execution itself can be done quickly, prolly without additional lookups
 	//
-	public interface IScavengeInstructions<TStreamId> {
-		//qqqqq is chunknumber the logical chunk number?
-		//qq do we want to store a separate file per logical chunk or per physical (merged) chunk.
-		IEnumerable<IReadOnlyChunkScavengeInstructions<TStreamId>> ChunkInstructionss { get; }
-		//qq this isn't quite it, prolly need stream name
-		bool TryGetDiscardPoint(TStreamId streamId, out DiscardPoint discardPoint);
-	}
+	//qqq this is now IMagicForExecutor
+	//public interface IScavengeInstructions<TStreamId> {
+	//	//qqqqq is chunknumber the logical chunk number?
+	//	//qq do we want to store a separate file per logical chunk or per physical (merged) chunk.
+	//	IEnumerable<IReadOnlyChunkScavengeInstructions<TStreamId>> ChunkInstructionss { get; }
+	//	//qq this isn't quite it, prolly need stream name
+	//	bool TryGetDiscardPoint(TStreamId streamId, out DiscardPoint discardPoint);
+	//}
 
 	// instructions (see above) for scavenging a particular chunk.
 	public interface IReadOnlyChunkScavengeInstructions<TStreamId> {
@@ -273,13 +271,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		//qq probably dont need this, but we could easily populate it if it is useful later.
 		//public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
-	}
-
-	//qq probably want to just use the DiscardPoint directly if thats all that ends up in here.
-	public record OriginalStreamData {
-		//qq make sure that Empty really means empty and not, say, discard everything.
-		public static readonly OriginalStreamData Empty = new(); //qq maybe dont need
-		public DiscardPoint DiscardPoint { get; init; }
 	}
 
 	public record ScavengePoint {

@@ -12,9 +12,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			_index = index;
 		}
 
-		public IScavengeInstructions<TStreamId> ScavengeInstructions =>
-			new InMemoryScavengeInstructions<TStreamId>();
-
 		// determine the discard point for each scavengeable stream
 		//
 		// scavengeable streams are the streams that
@@ -34,8 +31,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//
 		// (//qq incidentally, could these maps do with bloom filters for quickly skipping streams that
 		// dont need to be scavenged)
-		// and we want to know if when we are scavenging the log and index that this is sufficient to discover
-		// the discardpoint for every scavengeable stream.
+		// and we want to know if when we are scavenging the log and index that this is sufficient to
+		// discover the discardpoint for every scavengeable stream.
 		//
 		// what we want to check here, is whether we can always calculate the discard point for the
 		// original stream of the metastream and store it, if we only store the original stream hash
@@ -99,7 +96,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				//qq i dont think we can save this lookup by storing it on the metastreamData
 				// because when we find, say, the tombstone of the original stream and want to set its
 				// DP, the metadata stream does not necessarily exist.
-				var originalDiscardPoint = scavengeState.GetDiscardPoint(originalStreamHandle);
+				var originalDiscardPoint = scavengeState.GetOriginalStreamData(originalStreamHandle);
 
 				var adjustedDiscardPoint = CalculateDiscardPointForStream(
 					originalStreamHandle,
@@ -107,7 +104,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					metastreamData,
 					scavengePoint);
 
-				scavengeState.SetDiscardPoint(metastreamHandle, adjustedDiscardPoint);
+				scavengeState.SetOriginalStreamData(metastreamHandle, adjustedDiscardPoint);
 			}
 		}
 

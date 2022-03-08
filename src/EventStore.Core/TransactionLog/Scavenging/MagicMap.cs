@@ -1,49 +1,6 @@
 ﻿using System.Collections.Generic;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	public readonly struct DiscardPoint {
-		//qq do we need as many bits as this
-		public readonly long Value;
-
-		//qq probably make this private and use static method that makes the meaning clear
-		public DiscardPoint(long value) {
-			Value = value;
-		}
-
-		//qq make sure this is correct wrt the semantics of the Value
-		public static readonly DiscardPoint Tombstone = new(long.MaxValue);
-
-		//qq get this right wrt inclusive/exclusive. name? DiscardBefore ? 
-		public static DiscardPoint DiscardBefore(long value) {
-			return new(value);
-		}
-
-		public static DiscardPoint DiscardIncluding(long value) {
-			//qq if this is in range
-			return DiscardBefore(value + 1);
-		}
-		// Produces a discard point that discards when any of the provided discard points would discard
-		// i.e. takes the bigger of the two.
-		public static DiscardPoint AnyOf(DiscardPoint x, DiscardPoint y) {
-			return x.Value > y.Value ? x : y;
-		}
-
-		//qq property? consider name and semantics
-		public bool IsNotMax() {
-			return Value < long.MaxValue;
-		}
-
-		//qq depends on whether the DP is the first event to keep
-		// or the last event to discard. which in turn will depend on which is easier to generate
-		// consider the edges of the range actually. tombstone is long.max and usually we would/
-		// keep the tombstone but there is an option to discard it, in which case the value should
-		// presumably be long.max and it should be the last event to discard.
-		// we also need a way to express that we want to keep all the events. 
-		//qq we do need to have a discard point that means 'discard nothing'
-		public bool ShouldDiscard(long eventNumber) =>
-			eventNumber < Value;
-	}
-
 	//qq prolly dont need these once the dust settles
 	public readonly struct StreamHash {
 		public readonly ulong Value;
@@ -105,10 +62,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		MetastreamData GetMetastreamData(TStreamId streamId);
 		void SetMetastreamData(TStreamId streamId, MetastreamData streamData);
 
-		//qqqqqqq we already have a method to set the discard point, maybe we dont need these in addition
-		// although perhaps setting the discard point should be renamed to 'AdvanceDiscardPoint'
-		OriginalStreamData GetOriginalStreamData(TStreamId streamId);
-		void SetOriginalStreamData(TStreamId streamId, OriginalStreamData streamData);
+		void SetOriginalStreamData(TStreamId streamId, DiscardPoint discardPoint);
 	}
 
 	//qqqq this might _be_ IScavengeState. perhaps rename it
@@ -118,19 +72,24 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// store them separately. (i think i meant e.g. store their address in the log)
 		IEnumerable<(StreamHandle<TStreamId> MetadataStreamHandle, MetastreamData)> MetastreamDatas { get; }
 
-		DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle);
+		DiscardPoint GetOriginalStreamData(StreamHandle<TStreamId> streamHandle);
 		//qq we set a discard point for every relevant stream.
-		void SetDiscardPoint(StreamHandle<TStreamId> streamHandle, DiscardPoint discardPoint);
+		void SetOriginalStreamData(StreamHandle<TStreamId> streamHandle, DiscardPoint discardPoint);
 	}
 
 
 
 	// Then the executor:
 
-	public interface IMagicForExecutor {
-		bool IsCollision(StreamHash streamHash);
-		DiscardPoint GetDiscardPoint(StreamName streamName);
-		DiscardPoint GetDiscardPoint(StreamHash streamHash);
+	public interface IMagicForChunkExecutor<TStreamId> {
+		IEnumerable<IReadOnlyChunkScavengeInstructions<TStreamId>> ChunkInstructionss { get; }
+		DiscardPoint GetDiscardPoint(TStreamId streamId);
+	}
+
+	public interface IMagicForIndexExecutor<TStreamId> {
+		//qq needs to work for metadata streams and also for 
+		bool IsCollision(ulong streamHash);
+		DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle);
 	}
 
 	//qq note, probably need to complain if the ptable is a 32bit table

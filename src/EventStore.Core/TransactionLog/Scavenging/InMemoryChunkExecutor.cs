@@ -1,10 +1,11 @@
 ﻿using System;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	public class InMemoryExecutor<TStreamId> : IExecutor<TStreamId> {
+
+	public class InMemoryChunkExecutor<TStreamId> : IChunkExecutor<TStreamId> {
 		private readonly IChunkManagerForScavenge _chunkManager;
 		private readonly IChunkReaderForScavenge<TStreamId> _chunkReader;
-		public InMemoryExecutor(
+		public InMemoryChunkExecutor(
 			IChunkManagerForScavenge chunkManager,
 			IChunkReaderForScavenge<TStreamId> chunkReader) {
 
@@ -12,19 +13,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			_chunkReader = chunkReader;
 		}
 
-		public void ExecuteChunks(IScavengeInstructions<TStreamId> instructions) {
+		public void Execute(IMagicForChunkExecutor<TStreamId> instructions) {
 			foreach (var chunkInstructions in instructions.ChunkInstructionss) {
 				ExecuteChunk(instructions, chunkInstructions);
 			}
 
 		}
 
-		public void ExecuteIndex(IScavengeInstructions<TStreamId> instructions) {
-			//qq fill this in
-		}
-
 		private void ExecuteChunk(
-			IScavengeInstructions<TStreamId> scavengeInstructions,
+			IMagicForChunkExecutor<TStreamId> scavengeInstructions,
 			IReadOnlyChunkScavengeInstructions<TStreamId> chunkInstructions) {
 
 			var threshold = 1000; //qq make configurable
@@ -73,7 +70,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			 *  worth to keep after scavenging
 			 */
 
-			//			monday //qqq
 			// 1. open the chunk, probably with the bulk reader
 
 			//qq do this with a strategy so we can plug bulk reader in.
@@ -89,8 +85,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			foreach (var record in _chunkReader.Read(chunk)) {
 				//qq here we don't care about whether there were hash collisions or not
 				// delegate that to the 'instructions'
-				if (scavengeInstructions.TryGetDiscardPoint(record.StreamId, out var discardPoint) &&
-					discardPoint.ShouldDiscard(record.EventNumber)) {
+
+				var discardPoint = scavengeInstructions.GetDiscardPoint(record.StreamId);
+				if (discardPoint.ShouldDiscard(record.EventNumber)) {
 
 					//qq discard record
 				} else {
@@ -99,6 +96,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					//qq will using the bulk reader be awkward considering the record format
 					// size changes that have occurred over the years
 					// if so consider using the regular reader.
+					// what does the old scavenge use
+					// consider transactions
 				}
 			}
 			// 2. read through it, keeping and discarding as necessary. probably no additional lookups at

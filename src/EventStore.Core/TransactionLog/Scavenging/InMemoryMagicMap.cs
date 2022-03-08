@@ -8,13 +8,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class InMemoryMagicMap<TStreamId> :
 		IMagicForAccumulator<TStreamId>,
 		IMagicForCalculator<TStreamId>,
-		IMagicForExecutor {
+		IMagicForIndexExecutor<TStreamId>,
+		IMagicForChunkExecutor<TStreamId> {
 
 		private readonly CollisionDetector<TStreamId> _collisionDetector;
 
-		// these are what would be persisted
+		// data stored keyed against metadata streams
 		private readonly InMemoryCollisionResolver<TStreamId, MetastreamData> _metadatas;
-		private readonly InMemoryCollisionResolver<TStreamId, OriginalStreamData> _originalStreamDatas;
+
+		// data stored keyed against original (non-metadata) streams
+		private readonly InMemoryCollisionResolver<TStreamId, DiscardPoint> _originalStreamDatas;
 
 		// these would just be in mem even in proper implementation
 		private readonly ILongHasher<TStreamId> _hasher;
@@ -83,13 +86,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			//qq _metadatas[streamId] = streamData;
 		}
 
-		public OriginalStreamData GetOriginalStreamData(TStreamId streamId) {
+		public DiscardPoint GetOriginalStreamData(TStreamId streamId) {
 			if (!_originalStreamDatas.TryGetValue(streamId, out var streamData))
-				streamData = OriginalStreamData.Empty;
+				streamData = DiscardPoint.KeepAll;
 			return streamData;
 		}
 
-		public void SetOriginalStreamData(TStreamId streamId, OriginalStreamData streamData) {
+		public void SetOriginalStreamData(TStreamId streamId, DiscardPoint streamData) {
 			//qq _originalStreamDatas[streamId] = streamData;
 		}
 
@@ -117,7 +120,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 		}
 
-		public void SetDiscardPoint(
+		public void SetOriginalStreamData(
 			StreamHandle<TStreamId> streamHandle,
 			DiscardPoint discardPoint) {
 
@@ -125,7 +128,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 //			_scavengeableStreams[stream] = dp;
 		}
 
-		public DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle) {
+		public DiscardPoint GetOriginalStreamData(StreamHandle<TStreamId> streamHandle) {
 			throw new NotImplementedException(); //qqqq
 		}
 
@@ -135,22 +138,27 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 
 		//
-		// FOR EXECUTOR
+		// FOR CHUNK EXECUTOR
 		//
 
-		public DiscardPoint GetDiscardPoint(StreamName streamName) {
+		public IEnumerable<IReadOnlyChunkScavengeInstructions<TStreamId>> ChunkInstructionss =>
+			throw new System.NotImplementedException();
+
+		//qq this has to work for both metadata streams and non-metadata streams
+		public DiscardPoint GetDiscardPoint(TStreamId streamHandle) {
 			throw new NotImplementedException();
 		}
 
-		public DiscardPoint GetDiscardPoint(StreamHash streamHash) {
+		//
+		// FOR INDEX EXECUTOR
+		//
+
+		//qq this has to work for both metadata streams and non-metadata streams
+		public DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle) {
 			throw new NotImplementedException();
 		}
 
-		public bool IsCollision(StreamHash streamHash) {
-			throw new NotImplementedException();
-		}
-
-		public void Add(StreamName streamName) {
+		public bool IsCollision(ulong streamHash) {
 			throw new NotImplementedException();
 		}
 	}

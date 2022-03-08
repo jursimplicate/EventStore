@@ -5,19 +5,25 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class InMemoryScavenger<TStreamId> : IScavenger {
 		private readonly IAccumulator<TStreamId> _accumulator;
 		private readonly ICalculator<TStreamId> _calculator;
-		private readonly IExecutor<TStreamId> _executor;
+		private readonly IChunkExecutor<TStreamId> _chunkExecutor;
+		private readonly IIndexExecutor<TStreamId> _indexExecutor;
+		private readonly InMemoryMagicMap<TStreamId> _magic;
 		private readonly TFChunkDb _db;
 
 		public InMemoryScavenger(
+			InMemoryMagicMap<TStreamId> magic,
 			//qq might need to be factories if we need to instantiate new when calling start()
 			IAccumulator<TStreamId> accumulator,
 			ICalculator<TStreamId> calculator,
-			IExecutor<TStreamId> executor,
+			IChunkExecutor<TStreamId> chunkExecutor,
+			IIndexExecutor<TStreamId> indexExecutor,
 			TFChunkDb db) {
 
+			_magic = magic;
 			_accumulator = accumulator;
 			_calculator = calculator;
-			_executor = executor;
+			_chunkExecutor = chunkExecutor;
+			_indexExecutor = indexExecutor;
 			_db = db;
 		}
 
@@ -29,10 +35,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				EffectiveNow = DateTime.Now,
 			};
 
-			_accumulator.Accumulate(scavengePoint);
-			_calculator.Calculate(scavengePoint, _accumulator.ScavengeState);
-			_executor.ExecuteChunks(_calculator.ScavengeInstructions);
-			_executor.ExecuteIndex(_calculator.ScavengeInstructions);
+			_accumulator.Accumulate(scavengePoint, _magic);
+			_calculator.Calculate(scavengePoint, _magic);
+			_chunkExecutor.Execute(_magic);
+			_indexExecutor.Execute(_magic);
 			//qqqq tidy.. maybe call accumulator.done or something?
 		}
 
