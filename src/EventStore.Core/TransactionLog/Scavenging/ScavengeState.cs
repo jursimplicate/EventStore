@@ -3,19 +3,13 @@ using System.Collections.Generic;
 using EventStore.Core.Index.Hashes;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	public struct Unit {
-		public static readonly Unit Instance = new();
-	}
-
-	//qq try to let this just be a datastructure rather than contain scavenge logic
-
+	// This datastructure is read and written to by the Accumulator/Calculator/Executors.
+	// They contain the scavenge logic, this is just the holder of the data.
+	//
 	// we store data for metadata streams and for original streams, but we need to store
 	// different data for each so we have two maps. we have one collision detector since
 	// we need to detect collisions between all of the streams.
 	// we don't need to store data for every original stream, only ones that need scavenging.
-
-	// we store different data depending on whether the stream is a metadata stream
-	// or an original stream
 	public class ScavengeState<TStreamId> : IScavengeState<TStreamId> {
 
 		private readonly CollisionDetector<TStreamId> _collisionDetector;
@@ -39,10 +33,12 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			IIndexReaderForAccumulator<TStreamId> indexReaderForAccumulator) {
 
 			//qq inject this so that in log v3 we can have a trivial implementation
-			//qq to save us having to look up the stream names repeatedly
+			// to save us having to look up the stream names repeatedly
 			// irl this would be a lru cache.
 			var cache = new Dictionary<ulong, TStreamId>();
 
+			//qq inject this so that in log v3 we can have a trivial implementation
+			//qq to save us having to look up the stream names repeatedly
 			_collisionDetector = new CollisionDetector<TStreamId>(
 				HashInUseBefore,
 				collisionStorage);
@@ -154,19 +150,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		// the calculator needs to get the accumulated data for each scavengeable stream
 		// it does not have and does not need to know the non colliding stream names.
-		public IEnumerable<(StreamHandle<TStreamId>, MetastreamData)> MetastreamDatas {
-			//qq consider making this a method?
-			//qqqq not all of the scavengable streams have streamdata - the metadata streams dont
-			// whose responsibility is that to worry about the fact that metadata streams have fixed
-			// metadata themselves? its probably not the datastructure
-			// but we dont want to iterate through all the scavengeable steams looking up the metadata
-			// we want to iterate through all the metadatas and then iterate through all the 
-			// metadata streams. but that is a detail of the scavenge state.
-
-			get {
-				return _metadatas.Enumerate();
-			}
-		}
+		//qq consider making this a method?
+		public IEnumerable<(StreamHandle<TStreamId>, MetastreamData)> MetastreamDatas =>
+			_metadatas.Enumerate();
 
 		public void SetOriginalStreamData(
 			StreamHandle<TStreamId> streamHandle,

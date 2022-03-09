@@ -18,18 +18,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			_chunkReader = chunkReader;
 		}
 
-		public IScavengeStateForCalculator<TStreamId> ScavengeState =>
-			throw new NotImplementedException();
-
-		//qq condider what requirements this has of the chunkreader in terms of transactions
-		//qq are we expecting to read only committed records?
-		//qq are we expecting to read the records in commitPosition order?
-		//     (if so bulkreader might not be ideal)
-		//       or prepareposition order
-		//qq in fact we should probably do a end to end ponder of transactions (commit position vs logposition)
-		//    - also out-of-order and duplicate events
-		//    - partial scavenge where events have been removed from the log but not the index yet
-		//    - a completed previous scavenge
 		public void Accumulate(
 			ScavengePoint scavengePoint,
 			IScavengeStateForAccumulator<TStreamId> state) {
@@ -37,6 +25,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			var records = _chunkReader.Read(startFromChunk: 0, scavengePoint);
 			foreach (var record in records) {
 				switch (record) {
+					//qq there may be other cases... the 'empty write', the system record (epoch)
+					// which we might still want to get the timestamp of.
+					// oh and commit records which we probably want to handle the same as prepares
 					case RecordForAccumulator<TStreamId>.EventRecord x:
 						Accumulate(x, state);
 						break;
@@ -52,10 +43,17 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 		}
 
-		// For every (//qq ?) event we need to see if its stream collides.
+		// For every* event we need to see if its stream collides.
 		// its not so bad, because we have a cache
+		// * maybe not every.. beyond a certain point we only need to check records with eventnumber 0
+		//    but doing so has some complications
+		//      - events in transactions dont have an event number... we could just check all of these
+		//      - have to identify the point at which we can switch to just checking 0s
+		//      - is it possible that a new stream starts at non-zero without already having been checked
+		//        before? seems unlikely.. 
 		//qq - how does the cache work, we could just cache the fact that we have already
-		//   notified for this stream and not bother notifying again (we should still checkpoint that we got this far though)
+		//   notified for this stream and not bother notifying again (we should still checkpoint that we
+		//     got this far though)
 		//   OR we can cache the user of a hash against that hash. which has the advantage that if we
 		//      do come across a hash collision it might already be in the cache. but this is so rare
 		//      as to not be a concern. pick whichever turns out to be more obviously correct
@@ -63,7 +61,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			RecordForAccumulator<TStreamId>.EventRecord record,
 			IScavengeStateForAccumulator<TStreamId> state) {
 			//qq hmm for transactions does this need to be the prepare log position,
-			// the commit log position, or, in fact, both? can metadata be written as part of a transaction
+			// the commit log position, or, in fact, both? it would need to be the prepare position.
+			// can metadata be written as part of a transaction
 			// if so does that mean we need to do anything special when handling a metadata record
 			state.NotifyForCollisions(record.StreamId, record.LogPosition);
 		}
@@ -92,6 +91,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				//qq probably only want to increase the discard point here, in order to respect tombstone
 				// although... if there was a tombstone then this record shouldn't exist, and if it does
 				// we probably want to ignore it
+				//qq event number wont be set if this metadata is in a transaction, unless we use teh allreader.
 				DiscardPoint = null, //qq record.EventNumber (or evtnuber - 1)
 				//IsHardDeleted = ,
 				//IsMetadataStreamHardDeleted = 

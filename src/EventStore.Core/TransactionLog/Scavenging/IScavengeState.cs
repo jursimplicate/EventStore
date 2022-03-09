@@ -11,18 +11,26 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		IScavengeStateForChunkExecutor<TStreamId> {
 	}
 
-	// there are three kinds of streams that we might want to remove events from
-	//    - User streams with metadata.
-	//    - Metadata streams.
-	//    - streams with tombstones
+	//qq this summary comment will explain the general shape of the scavenge state - what it needs to be
+	// able to store and retrieve and why.
 	//
+	// There are two kinds of streams that we might want to remove events from
+	//    - original streams
+	//        - according to tombstone
+	//        - according to metadata (maxage, maxcount, tb)
+	//    - metadata streams
+	//        - according to tombstone
+	//        - maxcount 1
+	//
+	// Together these are the scavengable streams. We store a DiscardPoint for each so that we can
+	// 
+	// We only need to store metadata for the user streams with metadata since the metadata for
+	// metadatastreams is implicit.
+	// 
 	// however, we need to know about _all_ the stream collisions in the database not just the ones
 	// that we might remove events from, so that later we can scavenge the index without looking anything
 	// up in the log.
 
-	// Together these are the scavengable streams. We need a DiscardPoint for each.
-	// We only need to store metadata for the user streams with metadata since the metadata for
-	// metadatastreams is implicit.
 
 	// accumulator iterates through the log, spotting metadata records
 	// put in the data that the chunk and ptable scavenging require

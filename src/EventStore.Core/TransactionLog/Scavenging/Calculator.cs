@@ -6,7 +6,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Calculator<TStreamId> : ICalculator<TStreamId> {
 		private readonly IIndexForScavenge<TStreamId> _index;
 
-		//qqqqq extract this in-memory datastructure
+		//qqqqq extract this in-memory datastructure to be pluggable
 		private readonly Dictionary<int, IChunkScavengeInstructions<TStreamId>> _instructionsByChunk =
 			new();
 
@@ -14,67 +14,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			_index = index;
 		}
 
-		// determine the discard point for each scavengeable stream
-		//
-		// scavengeable streams are the streams that
-		//  - have metadata.
-		//  - are metadata streams. <- accumulator already calculated the discard point for these
-		//  - have tombstones. <- accumulator already calculated the discard points for these
-		//
-		//qq here is the key difference between the accumulator and the calculator: the accumulator picks
-		// up the criteria for what to scavenge, but does not decide all of what to scavenge because
-		// certain things can only be decided once we have a scavengepoint. however it can do trivial
-		// parts of the calculation that are not affected by the scavengepoint. put this doc in the
-		// suitable place.
-		//
-		// SO here we actually only need to calculate the discard point for streams that have metadata
-		// so we do it by iterating through the metadatas and calculating the DP for the corresponding
-		// original stream.
-		//
-		// (//qq incidentally, could these maps do with bloom filters for quickly skipping streams that
-		// dont need to be scavenged)
-		// and we want to know if when we are scavenging the log and index that this is sufficient to
-		// discover the discardpoint for every scavengeable stream.
-		//
-		// what we want to check here, is whether we can always calculate the discard point for the
-		// original stream of the metastream and store it, if we only store the original stream hash
-		// on the metastreamdata record:
-		//   - say neither stram collides with anything
-		//       then it is fine, we use the originalstreamhash to look up the lasteventnumber
-		//       and, and store the result against the originalstreamhash.
-		//   - say the meta stream collides (and we are have a handle to it)
-		//       fine. basically same as above
-		//   - say the original stream collides, (but the metastreams dont)
-		//       means we will have hash handles to metastreamdata objects with original hashes it
-		//         where the original hashes are the same.
-		//       123 => originalHash: 5
-		//       124 => originalHash: 5
-		//       we need to (i) notice that 5 is a collision and (ii) find out the stream name that
-		//       hashes to it in each case.
-		//
-		//       remember we have a (very short) list of all the stream names that collide.
-		//       we use that to build a map from hashcollision to list of stream names that map to it.
-		//       we can then discover that (5) is a collision of "a" and "b", we can then hash
-		//       "$$a" and "$$b" until we discover which maps to 123. that will tell us which
-		//       stream (a or b) this metadata is for, and give us a streamnamehandle to manipulate it.
-		//
-		//   - say they both collide. worst case, but actually slightly easier.
-		//       then we have:
-		//       $$a => originalHash: 5
-		//       $$b => originalHash: 5
-		//       
-		//       we will notice that 5 is a collision, but we will know immediately from the handle
-		//       that this is the metadata in stream "$$a" therefore for stream "a"
-		//qq ^ remember to implement this resolution
-		//
-		// maybe the new upshot is we can have something that encapsulates the above logic and given a
-		// handle to the metastreamdata and the originalhash, will give us a handle to use for the stream
-		// data.
-		//
-		//
-		//
-		// for the ones that do not collide, we can do this in the index-only.
-		// for the ones that do collide
 		//qqq for the ones that do collide can we just not bother to scavenge it for now, but we
 		// do want to prove out that it will work later.
 		//qq do we need to calculate a discard point for every stream, or can we keep using a discard
@@ -92,8 +31,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					metastreamData.OriginalStreamHash);
 
 				//qq it would be neat if this interface gave us some hint about the location of
-				// the DP so that we could set it in the moment cheaply without having to search
-				// although if its a wal that'll be cheap anyway.
+				// the DP so that we could set it in a moment cheaply without having to search.
+				// although, if its a wal that'll be cheap anyway.
 				//
 				//qq i dont think we can save this lookup by storing it on the metastreamData
 				// because when we find, say, the tombstone of the original stream and want to set its
@@ -110,6 +49,44 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 		}
 
+		//qq implement this, perhaps in another class that can be unit tested separately
+		// This gets the handle to the original stream, given the handle to the metadata stream and the
+		// hash of the original stream.
+		//
+		// The resulting handle needs to contain the original stream name if it is a collision,
+		// and just the hash if it is not a collision.
+		//
+		// Consider cases according to whether the metadata stream and the original stream collide with
+		// anything:
+		//
+		// - say neither stram collides with anything
+		//     then it is fine, we use the originalstreamhash to look up the lasteventnumber
+		//     and, and store the result against the originalstreamhash.
+		//
+		// - say the meta stream collides (and we are have a handle to it)
+		//     fine. basically same as above
+		//
+		// - say the original stream collides, (but the metastreams dont)
+		//     means we will have hash handles to metastreamdata objects with original hashes it
+		//       where the original hashes are the same.
+		//     123 => originalHash: 5
+		//     124 => originalHash: 5
+		//     we need to (i) notice that 5 is a collision and (ii) find out the stream name that
+		//     hashes to it in each case.
+		//
+		//     remember we have a (very short) list of all the stream names that collide.
+		//     we use that to build a map from hashcollision to list of stream names that map to it.
+		//     we can then discover that (5) is a collision of "a" and "b", we can then hash
+		//     "$$a" and "$$b" until we discover which maps to 123. that will tell us which
+		//     stream (a or b) this metadata is for, and give us a streamnamehandle to manipulate it.
+		//
+		// - say they both collide. worst case, but actually slightly easier.
+		//     then we have:
+		//     $$a => originalHash: 5
+		//     $$b => originalHash: 5
+		//       
+		//     we will notice that 5 is a collision, but we will know immediately from the handle
+		//     that this is the metadata in stream "$$a" therefore for stream "a"
 		private StreamHandle<TStreamId> GetOriginalStreamHandle(
 			StreamHandle<TStreamId> metastreamHandle,
 			ulong originalStreamHash) {
@@ -126,47 +103,27 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			MetastreamData metadata,
 			ScavengePoint scavengePoint) {
 
-			//qq our output is
-			//   - a map (handle -> DiscardPoint) that lets us look up a discard point for every stream
-			//         (this is the same structure used across all the chunks and ptables)
-			//          will subsequent scavenges need to recalculate this from
-			//          scratch or will some of the discard points still be known to be applicable?)
-			//   - and a count of the number of records to discard in each chunk.
-			//         (at least approximately)
-			//         so that we can decide whether to scavenge a chunk at all or leave it.
-			//         //qq will subsequent scavenges count from 0 for each chunk, or somehow pick up
-			//         from what was already counted.
-			//         //qqqq if we stored the previous and current discard point then can tell
-			//         from the index which events are new to scavenge this time - if that helps us
-			//         significantly with anything?
-			//
-
-			// Events can be discarded because of Tomstones, TruncateBefore, MaxCount, MaxAge.
+			// Events in original streams can be discarded because of:
+			//   Tombstones, TruncateBefore, MaxCount, MaxAge.
 			// SO:
 			// 1. determine an overall discard point from
 			//       - a) discard point (this covers Tombstones)
-			//       - b) tb
+			//       - b) tb //qq maybe
 			//       - c) maxcount
 			// 2. and a logposition cutoff for
 			//       - d) maxage   <- this one does require looking at the location of the events
 			// 3. iterate through the eventinfos calling discard for each one that is discarded
 			//    by the discard point and logpositioncutoff. this discovers the final discard point.
-			//qq ^ this should be done outside of this method.
-			// 3. return the final discard point.
+			// 4. return the final discard point.
 			//
-			// there are, therefore, three discard points to keep clear, //qq and which all need better names
-			//     - the originalDiscardPoint determined by the Accumulator without respect to the
-			//       scavengepoint (but includes tombstone, //qq and probably TB)
-			//     - the modifiedDiscardPoint which takes into account the maxcount by applying the
-			//       scavenge point
-			//     - the finalDiscardPoint which takes into account the max age and not discarding the last event
-			//
-			// the calculator establishes the finalDiscardPoint for all the streams, but there is nothing
-			// to do for the metadata streams and tombstoned streams. and they already respect the
-			// requirement not to scavenge the last event.
-
-			//qq make sure we never discard the last event (unless that flag is set)
-			// i think this means we will always need to get the lastEventNumber
+			// there are, therefore, three discard points to keep clear,
+			//qq and which all need better names
+			// - the originalDiscardPoint determined by the Accumulator without respect to the
+			//   scavengepoint (but includes tombstone, //qq and probably TB)
+			// - the modifiedDiscardPoint which takes into account the maxcount by applying the
+			//   scavenge point
+			// - the finalDiscardPoint which takes into account the max age and
+			//   not discarding the last event
 
 			//qq the stream really should exist but consider what will happen here if it doesn't
 			var lastEventNumber = _index.GetLastEventNumber(
@@ -175,7 +132,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			var logPositionCutoff = 0L;
 
-			//qq if we are already discarding the maximum, then no need to bother adjusting it
+			// if we are already discarding the maximum, then no need to bother adjusting it
 			// or calculating logPositionCutoff. we just discard everything except the tombstone.
 			if (discardPoint.IsNotMax()) {
 				//qq check these all carefuly

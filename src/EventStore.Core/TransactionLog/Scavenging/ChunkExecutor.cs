@@ -17,7 +17,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			foreach (var chunkInstructions in instructions.ChunkInstructionss) {
 				ExecuteChunk(instructions, chunkInstructions);
 			}
-
 		}
 
 		private void ExecuteChunk(
@@ -40,35 +39,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// knowing the numrecordstodiscard could be useful here, if we are just discarding a small
 			// number then we'd probably pad them with gone events instead of adding a posmap.
 
-			// in here could also be a reasonable place to do a best effort at removing commit records
-			// if all the prepares for the commit are in this chunk (typically the case) and they are all
-			// scavenged, then we can remove the commit as well i think. this is probably what the old
-			// scavenge does. check
+			// in ExecuteChunk could also be a reasonable place to do a best effort at removing commit
+			// records if all the prepares for the commit are in this chunk (typically the case) and they
+			// are all scavenged, then we can remove the commit as well i think. this is probably what
+			// the old scavenge does. check
 
 			// old scavenge says 'never delete the very first prepare in a transaction'
 			// hopefully we can account for that here? although maybe it means our count of
 			// records to scavenge that was calculated index only might end up being approximate.
-
-			/* Set a scavenge point
-			 * scavenge range or time
-			 * keep scavenging until scavenge point is hit
-			 *
-			 * Setting the scavenge point has to be separate
-			 * we can read the scavenge point stream to see if the scavenge data that we have is 
-			 * consistent with that or we need to build/rebuild it
-			 *
-			 * - maybe in memory dictionary and flush to persistent storage per chunk?
-			 * - per stream
-			 *	- 0-1 * metadata (tb, maxcount, max age, metadata position)
-			 * start the scavenge
-			 *  - write down which scavenge point log position
-			 *  - start gathering scavenge data up to that log position
-			 *		- metadata gathered checkpoint
-			 *  - start calculations for this log position
-			 *		- calculated upto checkpoint
-			 *  - could chase the calculated checkpoint if it only flushes when it has a full chunk's 
-			 *  worth to keep after scavenging
-			 */
 
 			// 1. open the chunk, probably with the bulk reader
 
@@ -86,6 +64,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				//qq here we don't care about whether there were hash collisions or not
 				// delegate that to the 'instructions'
 
+				//qq the discard point is pesimistic with maxage. if we want (configurable?),
+				// since we have the record here, we could look up the maxage and discard the event based
+				// on that. note we shouldn't do this in the index since there we don't already have the
+				// record and it would be more expensive to look it up. but the index is fine with us
+				// removing events from the log without removing them from the index
+
+				//qq hmm events in transactions do not have an EventNumber
 				var discardPoint = scavengeInstructions.GetDiscardPoint(record.StreamId);
 				if (discardPoint.ShouldDiscard(record.EventNumber)) {
 
