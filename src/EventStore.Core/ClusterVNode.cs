@@ -1192,6 +1192,7 @@ namespace EventStore.Core {
 
 				var scavengeState = new ScavengeState<TStreamId>(
 					logFormat.LongHasher,
+					new InMemoryScavengeMap<TStreamId, Unit>(),
 					new InMemoryScavengeMap<ulong, MetastreamData>(),
 					new InMemoryScavengeMap<TStreamId, MetastreamData>(),
 					new InMemoryScavengeMap<ulong, DiscardPoint>(),

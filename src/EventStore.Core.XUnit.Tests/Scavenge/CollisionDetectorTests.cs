@@ -134,7 +134,9 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				return false;
 			}
 
-			var sut = new CollisionDetector<string>(HashInUseBefore);
+			var sut = new CollisionDetector<string>(
+				HashInUseBefore,
+				new InMemoryScavengeMap<string, Unit>());
 
 			var expectedCollisions = new HashSet<string>();
 

@@ -17,7 +17,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public MetastreamData MetastreamData { get; }
 	}
 
-	//qqqq changing these tests to operate against the scavenge state
+	//qqqq change these tests to operate against the scavenger itself
 	//
 	// we accumulate metadata per stream and check that it worked
 	//qq we may be able to get rid of these tests when we have high level tests
@@ -119,6 +119,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			var hasher = new FirstCharacterHasher();
 			var metastreamLookup = new MockMetastreamLookup();
 
+			var collisionStorage = new InMemoryScavengeMap<string, Unit>();
 			var metaStorage = new InMemoryScavengeMap<ulong, MetastreamData>();
 			var metaCollisionStorage = new InMemoryScavengeMap<string, MetastreamData>();
 			var originalStorage = new InMemoryScavengeMap<ulong, DiscardPoint>();
@@ -126,6 +127,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			var sut = new ScavengeState<string>(
 				hasher,
+				collisionStorage,
 				metaStorage,
 				metaCollisionStorage,
 				originalStorage,

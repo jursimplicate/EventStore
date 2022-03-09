@@ -19,19 +19,26 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//qq for the real implementation make sure adding is idempotent
 		// consider whether this should be reponsible for its own storage, or maybe since
 		// there will be hardly any collisions we can just read the data out to store it separately
-		private readonly HashSet<T> _collisions;
+		private readonly IScavengeMap<T, Unit> _collisions;
 		
 		//qq will need something like this to tell where to continue from. maybe not in this class though
 		private long _lastPosition;
 
-		public CollisionDetector(HashInUseBefore hashInUseBefore) {
-			_collisions = new();
+		public CollisionDetector(
+			HashInUseBefore hashInUseBefore,
+			IScavengeMap<T, Unit> collisionStorage) {
+
 			_hashInUseBefore = hashInUseBefore;
+			_collisions = collisionStorage;
 		}
 
-		public bool IsCollision(T item) => _collisions.Contains(item);
-		//qq is this used in a path where allocations are ok.. albeit a pretty small one. would IEnumerable better, consider threading
-		public T[] GetAllCollisions() => _collisions.OrderBy(x => x).ToArray();
+		public bool IsCollision(T item) => _collisions.TryGetValue(item, out _);
+		//qq is this used in a path where allocations are ok.. albeit a pretty small one.
+		//would IEnumerable better, consider threading
+		public T[] GetAllCollisions() => _collisions
+			.Select(x => x.Key)
+			.OrderBy(x => x)
+			.ToArray();
 
 		// allllright. when we are adding an item, either:
 		//   1. we have seen this stream before.
@@ -122,16 +129,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 
 			// hash in use by a different item! found new collision. 2a
-			_collisions.Add(item);
-			_collisions.Add(collision);
+			_collisions[item] = Unit.Instance;
+			_collisions[collision] = Unit.Instance;
 			return CollisionResult.NewCollision;
 		}
-	}
-
-	//qq own file
-	public enum CollisionResult {
-		NoCollision,
-		NewCollision, // collided with something that was not previously in a collision
-		OldCollision, // collided with something that was already in a collision
 	}
 }

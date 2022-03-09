@@ -262,6 +262,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public DiscardPoint? DiscardPoint { get; init; }
 
 		//qq probably dont need this, but we could easily populate it if it is useful later.
+		// its tempting because is would allow us to easily see which stream the metadata is for
 		//public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
 
 		//qq prolly at the others

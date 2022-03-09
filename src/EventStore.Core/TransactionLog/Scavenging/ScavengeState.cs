@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using EventStore.Core.Index.Hashes;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
+	public struct Unit {
+		public static readonly Unit Instance = new();
+	}
 
 	//qq try to let this just be a datastructure rather than contain scavenge logic
-	//qq inject the in-memory-ness, make this class not in-memory
 
 	// we store data for metadata streams and for original streams, but we need to store
 	// different data for each so we have two maps. we have one collision detector since
@@ -24,13 +26,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// data stored keyed against original (non-metadata) streams
 		private readonly CollisionManager<TStreamId, DiscardPoint> _originalStreamDatas;
 
-		// these would just be in mem even in proper implementation
 		private readonly ILongHasher<TStreamId> _hasher;
 		private readonly IIndexReaderForAccumulator<TStreamId> _indexReaderForAccumulator;
 
 		public ScavengeState(
 			ILongHasher<TStreamId> hasher,
-			IScavengeMap<ulong, MetastreamData> metaStorage, //qq names
+			IScavengeMap<TStreamId, Unit> collisionStorage,
+			IScavengeMap<ulong, MetastreamData> metaStorage,
 			IScavengeMap<TStreamId, MetastreamData> metaCollisionStorage,
 			IScavengeMap<ulong, DiscardPoint> originalStorage,
 			IScavengeMap<TStreamId, DiscardPoint> originalCollisionStorage,
@@ -40,8 +42,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			//qq to save us having to look up the stream names repeatedly
 			// irl this would be a lru cache.
 			var cache = new Dictionary<ulong, TStreamId>();
-			_collisionDetector = new CollisionDetector<TStreamId>(HashInUseBefore);
+
+			_collisionDetector = new CollisionDetector<TStreamId>(
+				HashInUseBefore,
+				collisionStorage);
+
 			_hasher = hasher;
+
 			_metadatas = new(
 				_hasher,
 				_collisionDetector.IsCollision,

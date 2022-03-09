@@ -108,7 +108,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				_collidingHashes.Add(_hasher.Hash(kvp.Key));
 			}
 
-			//qqqqqqqqq need to exclude non-collisions that have been since collided with
 			foreach (var kvp in _nonCollisions) {
 				if (_collidingHashes is not null && _collidingHashes.Contains(kvp.Key))
 					continue;
