@@ -168,7 +168,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// is it actually the same thing in need of a refactor? then the other is just a
 		// decorator pattern that adds memoisation. might need to pass the hash into
 		// collisiondetector.add, or let it hash it itself
-		bool HashInUseBefore(ulong hash, long postion, out TStreamId candidedateCollidee);
+		bool HashInUseBefore(ulong hash, long postion, out TStreamId hashUser);
 	}
 
 
@@ -263,7 +263,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		//qq probably dont need this, but we could easily populate it if it is useful later.
 		//public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
+
+		//qq prolly at the others
+		public override string ToString() => $"MaxCount: {MaxCount}";
 	}
+
+	//qq consider, if we were happy to not scavenge streams that collide, at least for now, we could
+	// get away with only storing data for non-colliding keys in the magic map.
+
+
 
 	public record ScavengePoint {
 		public long Position { get; set; }

@@ -31,8 +31,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	}
 
 	public class InMemoryIndexReaderForAccumulator<TStreamId> : IIndexReaderForAccumulator<TStreamId> {
-		public bool HashInUseBefore(ulong hash, long postion, out TStreamId candidedateCollidee) {
-			//qq
+		public bool HashInUseBefore(ulong hash, long postion, out TStreamId hashUser) {
 			throw new System.NotImplementedException();
 		}
 	}

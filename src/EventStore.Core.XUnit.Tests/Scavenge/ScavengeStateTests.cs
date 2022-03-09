@@ -6,50 +6,57 @@ using EventStore.Core.TransactionLog.Scavenging;
 using Xunit;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
+	//qq expect this will change quite a lot
+	public class MockRecord {
+		public MockRecord(string streamName, MetastreamData metastreamData = null) {
+			StreamName = streamName;
+			MetastreamData = metastreamData;
+		}
+
+		public string StreamName { get; }
+		public MetastreamData MetastreamData { get; }
+	}
+
+	//qqqq changing these tests to operate against the scavenge state
+	//
 	// we accumulate metadata per stream and check that it worked
 	//qq we may be able to get rid of these tests when we have high level tests
 	//qq indeed when we have these tests we may be able to get rid of the
 	// collision resolver and detector tests
-	public class CollisionManagerTests {
-		private class Record {
-			public Record(string streamName, string metadata = null) {
-				StreamName = streamName;
-				Metadata = metadata;
-			}
+	public class ScavengeStateTests {
+		private static readonly MetastreamData _meta1 = new() { MaxCount = 1 };
+		private static readonly MetastreamData _meta2 = new() { MaxCount = 2 };
 
-			public string StreamName { get; }
-			public string Metadata { get; }
-		}
 
 		[Fact]
 		public void Trivial() {
 			RunScenario(
 				// the first letter of the stream name determines its hash value
 				// a-1:       a stream called "a-1" which hashes to "a"
-				new Record("a-1"),
+				new MockRecord("a-1"),
 				// setting metadata for a-1, which does not collide with a-1
-				new Record("b-$$a-1", "meta1"));
+				new MockRecord("b-$$a-1", _meta1));
 		}
 
 		[Fact]
 		public void seen_stream_before() {
 			RunScenario(
-				new Record("a-1"),
-				new Record("a-1"));
+				new MockRecord("a-1"),
+				new MockRecord("a-1"));
 		}
 
 		[Fact]
 		public void collision() {
 			RunScenario(
-				new Record("a-1"),
-				new Record("a-2"));
+				new MockRecord("a-1"),
+				new MockRecord("a-2"));
 		}
 
 		[Fact]
 		public void metadata_non_colliding() {
 			RunScenario(
-				new Record("a-1"),
-				new Record("b-$$a-1", "metadata1"));
+				new MockRecord("a-1"),
+				new MockRecord("b-$$a-1", _meta1));
 		}
 
 		//qq now that we are keying on the metadta streams, does that mean that we don't
@@ -60,76 +67,70 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		[Fact]
 		public void metadata_colliding() {
 			RunScenario(
-				new Record("a-1"),
-				new Record("a-$$a-1", "metadata1"));
+				new MockRecord("a-1"),
+				new MockRecord("a-$$a-1", _meta1));
 		}
 
 		[Fact]
 		public void metadatas_for_different_streams_non_colliding() {
 			RunScenario(
-				new Record("A-$$a-1", "metadata1"),
-				new Record("B-$$b-2", "metadata2"));
+				new MockRecord("A-$$a-1", _meta1),
+				new MockRecord("B-$$b-2", _meta2));
 		}
 
 		[Fact]
 		public void metadatas_for_different_streams_all_colliding() {
 			RunScenario(
-				new Record("a-$$a-1", "metadata1"),
-				new Record("a-$$a-2", "metadata2"));
+				new MockRecord("a-$$a-1", _meta1),
+				new MockRecord("a-$$a-2", _meta2));
 		}
 
 		[Fact]
 		public void metadatas_for_different_streams_original_streams_colliding() {
 			RunScenario(
-				new Record("A-$$a-1", "metadata1"),
-				new Record("B-$$a-2", "metadata2"));
+				new MockRecord("A-$$a-1", _meta1),
+				new MockRecord("B-$$a-2", _meta2));
 		}
 
 		[Fact]
 		public void metadatas_for_different_streams_meta_streams_colliding() {
 			RunScenario(
-				new Record("A-$$a-1", "metadata1"),
-				new Record("A-$$b-2", "metadata2"));
+				new MockRecord("A-$$a-1", _meta1),
+				new MockRecord("A-$$b-2", _meta2));
 		}
 
 		[Fact]
 		public void metadatas_for_different_streams_original_and_meta_colliding() {
 			RunScenario(
-				new Record("A-$$a-1", "metadata1"),
-				new Record("A-$$a-2", "metadata2"));
+				new MockRecord("A-$$a-1", _meta1),
+				new MockRecord("A-$$a-2", _meta2));
 		}
 
 		[Fact]
 		public void metadatas_for_different_streams_cross_colliding() {
 			RunScenario(
-				new Record("b-$$a-1", "metadata1"),
-				new Record("a-$$b-2", "metadata2"));
+				new MockRecord("b-$$a-1", _meta1),
+				new MockRecord("a-$$b-2", _meta2));
 		}
 
 		//qq need to test promotion
 
-		private void RunScenario(params Record[] log) {
+		private static void RunScenario(params MockRecord[] log) {
 			var hasher = new FirstCharacterHasher();
 			var metastreamLookup = new MockMetastreamLookup();
 
-			bool HashInUseBefore(string streamName, long position, out string hashUser) {
-				var hash = hasher.Hash(streamName);
-				for (int i = 0; i < position; i++) {
-					var record = log[i];
-					if (hasher.Hash(record.StreamName) == hash) {
-						hashUser = record.StreamName;
-						return true;
-					}
-				}
+			var metaStorage = new InMemoryScavengeMap<ulong, MetastreamData>();
+			var metaCollisionStorage = new InMemoryScavengeMap<string, MetastreamData>();
+			var originalStorage = new InMemoryScavengeMap<ulong, DiscardPoint>();
+			var originalCollisionStorage = new InMemoryScavengeMap<string, DiscardPoint>();
 
-				hashUser = default;
-				return false;
-			}
-
-			var sut = new CollisionManager<string, string>(
+			var sut = new ScavengeState<string>(
 				hasher,
-				HashInUseBefore,
-				new InMemoryCollisionResolver<string, string>(hasher));
+				metaStorage,
+				metaCollisionStorage,
+				originalStorage,
+				originalCollisionStorage,
+				new MockIndexReaderForAccumulator(hasher, log));
 
 			// iterate through the log, detecting collisions and accumulating metadatas
 			for (var i = 0; i < log.Length; i++) {
@@ -137,7 +138,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				sut.DetectCollisions(record.StreamName, i);
 
 				if (metastreamLookup.IsMetaStream(record.StreamName)) {
-					sut[record.StreamName] = record.Metadata;
+					sut.SetMetastreamData(record.StreamName, record.MetastreamData);
 				}
 			}
 
@@ -176,17 +177,17 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			// 2. Find the metadata for each stream, by stream name
 			// 2a. calculated the expected metadata per stream
-			var expectedMetadataPerStream = new Dictionary<string, string>();
+			var expectedMetadataPerStream = new Dictionary<string, MetastreamData>();
 			foreach (var record in log) {
-				if (record.Metadata is not null) {
-					expectedMetadataPerStream[record.StreamName] = record.Metadata;
+				if (record.MetastreamData is not null) {
+					expectedMetadataPerStream[record.StreamName] = record.MetastreamData;
 				}
 			}
 
 			// 2b. aseert that we can find each one
 			foreach (var kvp in expectedMetadataPerStream) {
-				Assert.True(sut.TryGetValue(kvp.Key, out var value));
-				Assert.Equal(kvp.Value, value);
+				var meta = sut.GetMetastreamData(kvp.Key);
+				Assert.Equal(kvp.Value, meta);
 			}
 
 			// 3. Iterate through the metadatas, find the appropriate handles.
@@ -205,7 +206,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			// 3b. compare to the actual handles.
 			var actual = sut
-				.Enumerate()
+				.MetastreamDatas
 				.Select(x => x.ToString())
 				.OrderBy(x => x);
 

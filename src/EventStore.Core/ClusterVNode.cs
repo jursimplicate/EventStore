@@ -1190,8 +1190,12 @@ namespace EventStore.Core {
 
 				var indexExecutor = new IndexExecutor<TStreamId>();
 
-				var scavengeState = new InMemoryScavengeState<TStreamId>(
+				var scavengeState = new ScavengeState<TStreamId>(
 					logFormat.LongHasher,
+					new InMemoryScavengeMap<ulong, MetastreamData>(),
+					new InMemoryScavengeMap<TStreamId, MetastreamData>(),
+					new InMemoryScavengeMap<ulong, DiscardPoint>(),
+					new InMemoryScavengeMap<TStreamId, DiscardPoint>(),
 					new InMemoryIndexReaderForAccumulator<TStreamId>());
 
 				var scavenger = new Scavenger<TStreamId>(
