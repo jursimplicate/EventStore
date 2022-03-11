@@ -1,9 +1,6 @@
 ﻿using System.Collections.Generic;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	//qq the purpose of this datastructure is to narrow the scope of what needs to be
-	// calculated based on what we can glean by tailing the log,
-	// without doubling up on what we can easily look up later.
 	public interface IScavengeState<TStreamId> :
 		IScavengeStateForAccumulator<TStreamId>,
 		IScavengeStateForCalculator<TStreamId>,
@@ -41,41 +38,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//qq mabe rename if we want the state to not be containing logic
 		void NotifyForCollisions(TStreamId streamId, long position);
 
-		//qq the API here can either expose a way for the accumulator to get and set the stream data
-		// OR it can provide a way to just be told there is new metadata or tombstones and it can
-		// update itself. for now run with the former because
-		//    1. accumulator can drive, map can just be a datastructure
-		//    2. map probably has to provide an api to read _anyway_
-		// call this to record what the current metadata is for a stream.
+		// call this to record what the current metadata is in a metadata stream.
 		// if there is previous metadata this will just overwrite it.
-		//
-		// this needs to spot if there is a hash collision. can it do it? bear in mind that it can be
-		// called multiple times for the same stream.
-		// 1. hash the stream name, see if we already have a record for that stream.
-		//         (check the (hash -> name) cache first) (check the collisions first also?)
-		//    - if we do have a record for the hash
-		//        - if that record has the same stream name
-		//            - means we need to store the address of the metadata record to get the name
-		//            - (make sure we dont scavenge that record while referencing it.. or if we legit can,
-		//               that something sensible happens)
-		//            - just update it. no collision.
-		//            - (note we can cache the (hash -> stream name) lookup, populate it as we call Set as
-		//               well)
-		//        - else (different stream name)
-		//            - collision detected!
-		//            - store the streamName and streamData in another datastructure (collision structure)
-		//            - do we need to pull the one that got collided with out into the collision structure?
-		//                - we can if we need to because we have both stream names and stream datas here.
-		//                  that will do for now.
-		//    - else (no record)
-		//        - just add it
 		MetastreamData GetMetastreamData(TStreamId streamId);
 		void SetMetastreamData(TStreamId streamId, MetastreamData streamData);
 
 		void SetOriginalStreamData(TStreamId streamId, DiscardPoint discardPoint);
 	}
 
-	//qqqq this might _be_ IScavengeState. perhaps rename it
 	public interface IScavengeStateForCalculator<TStreamId> {
 		// Calculator iterates through the scavengable streams and their metadata
 		//qq note we dont have to _store_ the metadatas for the metadatastreams internally, we could
@@ -87,23 +57,19 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		void SetOriginalStreamData(StreamHandle<TStreamId> streamHandle, DiscardPoint discardPoint);
 	}
 
-
-
-	// Then the executor:
-
+	//qq needs to work for metadata streams and also for original streams
+	// but that is easy enough because we can see if the streamid is for a metastream or not
 	public interface IScavengeStateForChunkExecutor<TStreamId> {
 		IEnumerable<IReadOnlyChunkScavengeInstructions<TStreamId>> ChunkInstructionss { get; }
 		DiscardPoint GetDiscardPoint(TStreamId streamId);
 	}
 
+	//qq needs to work for metadata streams and also for original streams
+	//qq which is awkward because if we only have the hash we don't know which it is
+	// we would need to check in both maps which is not ideal.
+	//qq ^ the index executor should be smart enough though to only call this once per non-colliding stream.
 	public interface IScavengeStateForIndexExecutor<TStreamId> {
-		//qq needs to work for metadata streams and also for 
 		bool IsCollision(ulong streamHash);
 		DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle);
 	}
-
-	//qq note, probably need to complain if the ptable is a 32bit table
-	//qq maybe we need a collision free core that is just a map
-	//qq just a thought, lots of the metadatas might be equal, we might be able to store each uniqueb
-	// instance once. implementation detail.
 }

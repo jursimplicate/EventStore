@@ -276,10 +276,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// according to IndexReader.GetStreamMetadataCached
 	// the metadata for a metadatastream cannot be overwritten
 	//qq so if we get a metadata FOR a metadata stream, we should ignore it.
-	// if we get a hard delete for a metadata stream
+	//qq if we get a tombstone for a metadata stream?
+	//     - see how the system handles it for reads. if it ignores it we should too. if it clears the metadata we should too
 	//qq for all of thes consider how much precision (and therefore bits) we need
 	//qq look at the places where we construct this, are we always setting what we need
 	// might want to make an explicit constructor. can we easily find the places we are calling 'with' ?
+	//qq tempting to 'optimise' this to a smaller size by storing the the 'IsTombstoned' and maybe
+	// the TruncateBefore _in_ the DiscardPoint, but it would make the semantics less clear, the code
+	// less obvious and probably less flexible. dont optimise this yet.
+	//qq for everything in here consider signed/unsigned and the number of bits and whether it needs to
+	// but nullable vs, say, using -1 to mean no value.
 	public record MetastreamData {
 		public static readonly MetastreamData Empty = new(); //qq maybe dont need
 
@@ -291,9 +297,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public TimeSpan? MaxAge { get; init; } //qq can have limited precision?
 		public long? TruncateBefore { get; init; }
 
+		//qq this is the discard point of the metadata stream.
 		//qq consider if we want to have TB or jsut set the discard point directly
 		// might need to store the TB separately if we need to recalculate the DP using
 		// the TB later.
+		//qq not sure this wants to be nullable
 		public DiscardPoint? DiscardPoint { get; init; }
 
 		//qq probably dont need this, but we could easily populate it if it is useful later.
@@ -303,6 +311,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//qq prolly at the others
 		public override string ToString() => $"MaxCount: {MaxCount}";
 	}
+
+
+	//qq some kind of configurable speed throttle on each of the phases to stop them hogging iops
 
 	//qq consider, if we were happy to not scavenge streams that collide, at least for now, we could
 	// get away with only storing data for non-colliding keys in the magic map.
@@ -335,6 +346,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//qqqq if we stored the previous and current discard point then can tell
 	// from the index which events are new to scavenge this time - if that helps us
 	// significantly with anything?
+	//
+	//qq after a scavenge there are probaly some entries in the scavenge state that we can forget about
+	// to save us having to iterate them next time. for example if it was tombtoned. and perhaps tb
+	// as long as the tb was fully executed.
+
 
 	//qq some events, like empty writes, do not contain data, presumably dont take up any numbering
 	// see what old scavenge does with those and what we should do with them
@@ -372,19 +388,110 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//   - looks like uncommitted prepares are generally kept, maybe unless the stream is hard deleted
 	//   - looks like even committed prepares are only removed if the commit is in the same chunk
 	// - uncommitted transactions are not present in the index, neither are commit records
-	
-	//qqqq ponder out some notes on out-of-order and duplicate events
+
 
 	//qq perhaps scavenge points go in a scavenge point stream so they can be easily found
+
+	//qq make it so that the scavenge state can be deleted and run again
+	// if we delete the scavenge state and run a scavenge, do we want it to
+	// process each scavenge point or just the last? presumably just the last because there could
+	// be a lot of them.
+
+	//qq consider compatibility with old scavenge
+	// - config flag to choose which scavenge to run
+	// - old by default
+	// you definitely have to be able to run old scavenge first, thats typical.
+	// will it work to run old scavenge after new scavenge? don't see why not
+	// will it work to interleave them?
+	// if we want to disable the old scavenge after running the new we could
+	//    - bump the chunk schema version
+	//    - have old scavenge check for scavengepoints and abort?
 
 	//qq RESUMING SCAVENGE
 	// need some comments about this. consider what checkpoints we need to store in the scavenge state
 	//  - accumulated up to
 	//  - calculated up to
 	//  - executed up to?
+	// and also recovery from crashing during a flush. idempotency
+
+	//qqqq need comment/plan about EXPANDING metadatas.
+	//   probably we want to follow the same behaviour as reads so that the visible data doesn't
+	//   change when you run a scavenge.
+	//qqqq need comment/plan about that flag that allows the last event to be removed.
+	//qqqq need comment/plan on out of order and duplicate events
+
+	//qq can you tombstone a metadata stream
+	//qq if you tombstone a stream does it probably has no effect on the metadtaa stream since we
+	// already scavenge all but the last event, and we want to keep the last event.
 
 	//qq to consider in CollisionDetector any complications from previous index entries having been
 	// scavenged.
+
+	//qq note, probably need to complain if the ptable is a 32bit table
+
+	//qq backup strategy: same as current, only take a backup while scavenge is not running. this is
+	// point towards not having the accumulator running continuall too
+
+	//qq dont forget about chunk merging.. maybe is that another phase after execution, or part of
+	// execution.
+
+	//qq the hash collision detection is pretty key. it is how we efficiently scavenge the index.
+	// if we don't spot what collisions there are, and simply calculate DiscardPoints and store them
+	// against stream names, then (aside from the additional disk space, iops to read and write, seach
+	// time to traverse that structure) we wouldn't be able to tell what the discard point is for any
+	// given indexentry without looking up the log record to see what stream it is for. repeat for
+	// _every_ indexentry.
+	//
+	// todo:
+	// - start creating high level tests to test the scavenger (see how the old scavenge tests work, we
+	//   may be able to use them - the effect of the scavenge ought to be pretty much identical to the
+	//   user but the effect on the log will be different so may not be able to use exactly the same
+	//   tests (e.g. we will drop in scavenge points, might not scavenge the same things exactly that
+	//   are done on a best effort basis like commit records)
+	// - port the ScavengeState tests over to the higher level tests
+	// - pass through the doc in case there are more things to think about
+	// - diagram out the components so we can get the big picture
+	// - want the same unit tests to run against mock implementations and real implementations of
+	//      the adapter interfaces ideally
+	// - implement/test the rest of the logic in the scavenge (tdd)
+	// - implement/test the adapters that plug it in to the rest of the system
+	// - implement/test the persistent scavengemap
+	// - integrate starting/stopping with eventstore proper
+	// - performance testing
+	// - forward port to master - ptables probably wont be a trivial change
+	// - probably forward/back port to 20.10 and 21.10
+	// - 
+	// ...
+	//
+	// dimensions for testing (perhaps in combination also)
+	//   - committed transactions
+	//   - uncommitted transactions
+	//   - transactions crossing chunks
+	//   - setting maxage/maxcount/tb
+	//   - expanding metadata
+	//   - contracting metadata
+	//   - metadata for streams that dont exist
+	//   - metadata for streams that do exist but are created after
+	//   - tombstones
+	//   - tombstone in transaction
+	//   - metadata in transaction
+	//   - tombstone in metadata stream
+	//   - metadata for metadata stream
+	//   - stopped/resumed scavenge
+	//   - initial/subsequent scavenge
+	//   - merged chunks
+	//   - ...
+	//
+	//
+	//qq we can split the scavenge state by
+	// - metadata vs original stream
+	//    - downside, index executor doesn't know which map to look in. double lookup.
+	// - metastreamdata vs discard point
+	//    - i.e. store allll the discard points in one map
+	// - all in one map
+	//    - downside: wasted space, or complexity of variable length values
+
+
 	public record ScavengePoint {
 		public long Position { get; set; }
 		public DateTime EffectiveNow { get; set; }

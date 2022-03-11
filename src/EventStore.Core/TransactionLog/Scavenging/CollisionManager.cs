@@ -44,6 +44,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		public bool TryGetValue(TKey key, out TValue value) {
+			//qq is this any different to checking isCollision and then picking the map
 			return _collisions.TryGetValue(key, out value)
 				|| _nonCollisions.TryGetValue(_hasher.Hash(key), out value);
 		}

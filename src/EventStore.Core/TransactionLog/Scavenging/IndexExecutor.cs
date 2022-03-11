@@ -24,7 +24,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			var currentHashIsCollision = false;
 			var discardPoint = DiscardPoint.KeepAll;
 
-			//qq some kind of speed throttle?
 			foreach (var indexEntry in indexEntries) {
 				//qq to decide whether to keep an index entry we need to 
 				// 1. determine which stream it is for

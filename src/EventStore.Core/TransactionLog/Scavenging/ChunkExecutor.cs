@@ -23,7 +23,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			IScavengeStateForChunkExecutor<TStreamId> scavengeInstructions,
 			IReadOnlyChunkScavengeInstructions<TStreamId> chunkInstructions) {
 
-			var threshold = 1000; //qq make configurable
+			//qq make configurable
+			//qq might this want to consider the size of the chunk too, since it may have been scavenged
+			// before
+			var threshold = 1000;
 			if (chunkInstructions.NumRecordsToDiscard < threshold) {
 				// they'll still (typically) be removed from the index
 				return;

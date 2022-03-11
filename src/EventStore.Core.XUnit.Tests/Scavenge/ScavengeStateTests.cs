@@ -56,7 +56,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void metadata_non_colliding() {
 			RunScenario(
 				new MockRecord("a-1"),
-				new MockRecord("b-$$a-1", _meta1));
+				new MockRecord("B-$$a-1", _meta1));
 		}
 
 		//qq now that we are keying on the metadta streams, does that mean that we don't
@@ -69,6 +69,15 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			RunScenario(
 				new MockRecord("a-1"),
 				new MockRecord("a-$$a-1", _meta1));
+		}
+
+		//qq this would fail if we checked that looking up the metadatas per stream gives us
+		// the right metadatas. a-2 has no metadata but we would find _meta1 anyway.
+		[Fact]
+		public void darn() {
+			RunScenario(
+				new MockRecord("A-$$a-1", _meta1),
+				new MockRecord("a-2"));
 		}
 
 		[Fact]

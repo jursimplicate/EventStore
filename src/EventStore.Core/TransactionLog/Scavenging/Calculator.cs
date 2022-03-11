@@ -37,6 +37,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				//qq i dont think we can save this lookup by storing it on the metastreamData
 				// because when we find, say, the tombstone of the original stream and want to set its
 				// DP, the metadata stream does not necessarily exist.
+				// unless we don't care here about the tombstone, and only care about things that could
+				// be conveniently set on the metastreamdata by the accumulator
+				//qq if the scavengemap supports RMW that might have a bearing too, but for now maybe
+				// this is just overcomplicating things.
+				//qq how bad is this, how much could we save
 				var originalDiscardPoint = scavengeState.GetOriginalStreamData(originalStreamHandle);
 
 				var adjustedDiscardPoint = CalculateDiscardPointForStream(
@@ -45,10 +50,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					metastreamData,
 					scavengePoint);
 
-				scavengeState.SetOriginalStreamData(metastreamHandle, adjustedDiscardPoint);
+				scavengeState.SetOriginalStreamData(originalStreamHandle, adjustedDiscardPoint);
 			}
 		}
 
+		//qq this is broken
 		//qq implement this, perhaps in another class that can be unit tested separately
 		// This gets the handle to the original stream, given the handle to the metadata stream and the
 		// hash of the original stream.
@@ -80,6 +86,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//     "$$a" and "$$b" until we discover which maps to 123. that will tell us which
 		//     stream (a or b) this metadata is for, and give us a streamnamehandle to manipulate it.
 		//
+		//     NO this doesn't work if one of the original streams doesn't actually exist, then it wont
+		//     collide.
+		//
 		// - say they both collide. worst case, but actually slightly easier.
 		//     then we have:
 		//     $$a => originalHash: 5
@@ -87,6 +96,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//       
 		//     we will notice that 5 is a collision, but we will know immediately from the handle
 		//     that this is the metadata in stream "$$a" therefore for stream "a"
+
 		private StreamHandle<TStreamId> GetOriginalStreamHandle(
 			StreamHandle<TStreamId> metastreamHandle,
 			ulong originalStreamHash) {
@@ -123,7 +133,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// - the modifiedDiscardPoint which takes into account the maxcount by applying the
 			//   scavenge point
 			// - the finalDiscardPoint which takes into account the max age and
-			//   not discarding the last event
+			//   ensures not discarding the last event
+			//qq        ^ hum.. this last might involve moving the discard point backwards
+			//            so there are some points when we do need to move it backwards
+			// this method calculates the FinalDiscardPoint
 
 			//qq the stream really should exist but consider what will happen here if it doesn't
 			var lastEventNumber = _index.GetLastEventNumber(
@@ -216,6 +229,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					// is enabled)
 					// which ones are otherwise in danger of removing all the events?
 					//  hard deleted?
+					//
+					//qq although, the old scavenge might be capable of removing all the events
+					// after this scavenge point... which would produce this condition.
+					//
+					// in these situatiosn what discard point should we return, or do we need to abort
 					throw new Exception("panic"); //qq dont panic really shouldn't
 				}
 
