@@ -1185,7 +1185,7 @@ namespace EventStore.Core {
 					new IndexForScavenge<TStreamId>(_readIndex));
 
 				var chunkExecutor = new ChunkExecutor<TStreamId>(
-					new MockChunkManagerForScavenge(), //qq mock
+					new ChunkManagerForScavenge(), //qq mock
 					logFormat.ChunkReaderForScavenge);
 
 				var indexExecutor = new IndexExecutor<TStreamId>();
@@ -1205,7 +1205,7 @@ namespace EventStore.Core {
 					calculator,
 					chunkExecutor,
 					indexExecutor,
-					Db);
+					new ScavengePointSource(Db));
 
 				var storageScavenger = new NewStorageScavenger<TStreamId>(scavenger);
 

@@ -6,12 +6,12 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Accumulator<TStreamId> : IAccumulator<TStreamId> {
 		private readonly ILongHasher<TStreamId> _hasher;
 		private readonly IMetastreamLookup<TStreamId> _metastreamLookup;
-		private readonly IChunkReaderForAccumulation<TStreamId> _chunkReader;
+		private readonly IChunkReaderForAccumulator<TStreamId> _chunkReader;
 
 		public Accumulator(
 			ILongHasher<TStreamId> hasher,
 			IMetastreamLookup<TStreamId> metastreamLookup,
-			IChunkReaderForAccumulation<TStreamId> chunkReader) {
+			IChunkReaderForAccumulator<TStreamId> chunkReader) {
 
 			_hasher = hasher;
 			_metastreamLookup = metastreamLookup;

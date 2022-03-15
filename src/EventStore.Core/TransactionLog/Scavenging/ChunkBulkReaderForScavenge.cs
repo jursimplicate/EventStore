@@ -1,16 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
-using EventStore.Core.TransactionLog.Chunks;
 using EventStore.Core.TransactionLog.Chunks.TFChunk;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
-	public class MockChunkReaderForAccumulation<TStreamId> : IChunkReaderForAccumulation<TStreamId> {
+	//qq own files for stuff in here
+	public class ChunkReaderForAccumulator<TStreamId> : IChunkReaderForAccumulator<TStreamId> {
 		public IEnumerable<RecordForAccumulator<TStreamId>> Read(int startFromChunk, ScavengePoint scavengePoint) {
 			throw new NotImplementedException();
 		}
 	}
 
-	public class ChunkBulkReaderForAccumulation<TStreamId> : IChunkReaderForAccumulation<TStreamId> {
+	public class ChunkBulkReaderForAccumulator<TStreamId> : IChunkReaderForAccumulator<TStreamId> {
 		public IEnumerable<RecordForAccumulator<TStreamId>> Read(int startFromChunk, ScavengePoint scavengePoint) {
 			throw new NotImplementedException();
 		}
@@ -81,7 +81,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		 */
 	}
 
-	public class MockChunkReaderForScavenge : IChunkReaderForScavenge<string> {
+	//qq implement
+	public class ChunkReaderForScavenge : IChunkReaderForScavenge<string> {
 		public IEnumerable<RecordForScavenge<string>> Read(TFChunk chunk) {
 			yield return new() {
 				StreamId = "thestream",
@@ -90,7 +91,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 	}
 
-	public class MockChunkManagerForScavenge : IChunkManagerForScavenge {
+	//qq implement
+	public class ChunkManagerForScavenge : IChunkManagerForScavenge {
 		public TFChunk GetChunk(int logicalChunkNum) {
 			throw new NotImplementedException();
 		}

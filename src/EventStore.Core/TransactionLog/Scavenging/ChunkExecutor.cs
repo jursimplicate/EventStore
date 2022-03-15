@@ -1,7 +1,4 @@
-﻿using System;
-
-namespace EventStore.Core.TransactionLog.Scavenging {
-
+﻿namespace EventStore.Core.TransactionLog.Scavenging {
 	public class ChunkExecutor<TStreamId> : IChunkExecutor<TStreamId> {
 		private readonly IChunkManagerForScavenge _chunkManager;
 		private readonly IChunkReaderForScavenge<TStreamId> _chunkReader;

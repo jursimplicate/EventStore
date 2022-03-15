@@ -93,6 +93,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		void Execute(IScavengeStateForIndexExecutor<TStreamId> instructions);
 	}
 
+	// So that the scavenger knows where to scavenge up to
+	public interface IScavengePointSource {
+		ScavengePoint GetScavengePoint();
+	}
 
 	public interface IChunkManagerForScavenge {
 		TFChunk SwitchChunk(TFChunk chunk, bool verifyHash, bool removeChunksWithGreaterNumbers);
@@ -104,7 +108,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//    chunk. i wonder if we should use the bulk reader.
 	//qq note dont use allreader to implement this, it has logic to deal with transactions, skips
 	// epochs etc.
-	public interface IChunkReaderForAccumulation<TStreamId> {
+	public interface IChunkReaderForAccumulator<TStreamId> {
 		IEnumerable<RecordForAccumulator<TStreamId>> Read(
 			int startFromChunk,
 			ScavengePoint scavengePoint);
@@ -452,6 +456,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// - want the same unit tests to run against mock implementations and real implementations of
 	//      the adapter interfaces ideally
 	// - implement/test the rest of the logic in the scavenge (tdd)
+	//     - tidying phase
+	//     - stopping/resuming
+	//     - ...
 	// - implement/test the adapters that plug it in to the rest of the system
 	// - implement/test the persistent scavengemap
 	// - integrate starting/stopping with eventstore proper

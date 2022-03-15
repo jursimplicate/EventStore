@@ -1,5 +1,4 @@
 ﻿using System;
-using EventStore.Core.TransactionLog.Chunks;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Scavenger<TStreamId> : IScavenger {
@@ -8,7 +7,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		private readonly ICalculator<TStreamId> _calculator;
 		private readonly IChunkExecutor<TStreamId> _chunkExecutor;
 		private readonly IIndexExecutor<TStreamId> _indexExecutor;
-		private readonly TFChunkDb _db;
+		private readonly IScavengePointSource _scavengePointSource;
 
 		public Scavenger(
 			IScavengeState<TStreamId> scavengeState,
@@ -17,23 +16,23 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			ICalculator<TStreamId> calculator,
 			IChunkExecutor<TStreamId> chunkExecutor,
 			IIndexExecutor<TStreamId> indexExecutor,
-			TFChunkDb db) {
+			IScavengePointSource scavengePointSource) {
 
 			_scavengeState = scavengeState;
 			_accumulator = accumulator;
 			_calculator = calculator;
 			_chunkExecutor = chunkExecutor;
 			_indexExecutor = indexExecutor;
-			_db = db;
+			_scavengePointSource = scavengePointSource;
 		}
 
 		public void Start() {
+			//qq implement stopping and resuming at each stage, so that it picks up
+			// where it left off. cts?
+			// for now this starts from the beginning
+
 			//qq this would come from the log so that we can stop/resume it.
-			//qq implement stopping and resuming. at each stage. cts?
-			var scavengePoint = new ScavengePoint {
-				Position = _db.Config.ChaserCheckpoint.Read(),
-				EffectiveNow = DateTime.Now,
-			};
+			var scavengePoint = _scavengePointSource.GetScavengePoint();
 
 			_accumulator.Accumulate(scavengePoint, _scavengeState);
 			_calculator.Calculate(scavengePoint, _scavengeState);

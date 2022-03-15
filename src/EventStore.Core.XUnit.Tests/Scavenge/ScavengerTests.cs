@@ -5,27 +5,9 @@ using EventStore.Core.TransactionLog.Scavenging;
 using Xunit;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
-	//qq expect this will change quite a lot
-	public class MockRecord {
-		public MockRecord(string streamName, MetastreamData metastreamData = null) {
-			StreamName = streamName;
-			MetastreamData = metastreamData;
-		}
-
-		public string StreamName { get; }
-		public MetastreamData MetastreamData { get; }
-	}
-
-	//qqqq change these tests to operate against the scavenger itself
-	//
-	// we accumulate metadata per stream and check that it worked
-	//qq we may be able to get rid of these tests when we have high level tests
-	//qq indeed when we have these tests we may be able to get rid of the
-	// collision resolver and detector tests
-	public class ScavengeStateTests {
+	public class ScavengerTests {
 		private static readonly MetastreamData _meta1 = new() { MaxCount = 1 };
 		private static readonly MetastreamData _meta2 = new() { MaxCount = 2 };
-
 
 		[Fact]
 		public void Trivial() {
@@ -121,8 +103,13 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				new MockRecord("a-$$b-2", _meta2));
 		}
 
-		//qq need to test promotion
+		private class MockScavengePointSource : IScavengePointSource {
+			public ScavengePoint GetScavengePoint() {
+				throw new NotImplementedException();
+			}
+		}
 
+		//qq refactor to base class
 		private static void RunScenario(params MockRecord[] log) {
 			var hasher = new FirstCharacterHasher();
 			var metastreamLookup = new MockMetastreamLookup();
@@ -133,7 +120,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			var originalStorage = new InMemoryScavengeMap<ulong, DiscardPoint>();
 			var originalCollisionStorage = new InMemoryScavengeMap<string, DiscardPoint>();
 
-			var sut = new ScavengeState<string>(
+			var scavengeState = new ScavengeState<string>(
 				hasher,
 				collisionStorage,
 				metaStorage,
@@ -142,13 +129,29 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				originalCollisionStorage,
 				new MockIndexReaderForAccumulator(hasher, log));
 
+			var sut = new Scavenger<string>(
+				scavengeState,
+				new Accumulator<string>(
+					hasher: hasher,
+					metastreamLookup: metastreamLookup,
+					chunkReader: new MockChunkReaderForAccumulator<string>(log)),
+				new Calculator<string>(
+					index: new MockIndexForScavenge(log)),
+				new ChunkExecutor<string>(
+					chunkManager: new MockChunkManagerForScavenge(),
+					chunkReader: new MockChunkReaderForScavenge(log)),
+				new IndexExecutor<string>(),
+				new MockScavengePointSource());
+
+			sut.Start(); //qq irl how do we know when its done
 			// iterate through the log, detecting collisions and accumulating metadatas
+			//qqqqqqqq this is what the accumulator will do.
 			for (var i = 0; i < log.Length; i++) {
 				var record = log[i];
-				sut.DetectCollisions(record.StreamName, i);
+				scavengeState.DetectCollisions(record.StreamName, i);
 
 				if (metastreamLookup.IsMetaStream(record.StreamName)) {
-					sut.SetMetastreamData(record.StreamName, record.MetastreamData);
+					scavengeState.SetMetastreamData(record.StreamName, record.MetastreamData);
 				}
 			}
 
@@ -182,7 +185,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			}
 
 			// 1b. assert list of collisions.
-			Assert.Equal(collidingStreams.OrderBy(x => x), sut.Collisions().OrderBy(x => x));
+			Assert.Equal(collidingStreams.OrderBy(x => x), scavengeState.Collisions().OrderBy(x => x));
 
 
 			// 2. Find the metadata for each stream, by stream name
@@ -196,7 +199,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			// 2b. aseert that we can find each one
 			foreach (var kvp in expectedMetadataPerStream) {
-				var meta = sut.GetMetastreamData(kvp.Key);
+				var meta = scavengeState.GetMetastreamData(kvp.Key);
 				Assert.Equal(kvp.Value, meta);
 			}
 
@@ -215,7 +218,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				.OrderBy(x => x);
 
 			// 3b. compare to the actual handles.
-			var actual = sut
+			var actual = scavengeState
 				.MetastreamDatas
 				.Select(x => x.ToString())
 				.OrderBy(x => x);

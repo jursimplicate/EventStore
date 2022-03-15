@@ -60,8 +60,8 @@ namespace EventStore.Core.LogAbstraction {
 				streamExistenceFilterReader: streamExistenceFilter,
 				recordFactory: new LogV2RecordFactory(),
 				supportsExplicitTransactions: true,
-				chunkReaderForAccumulation: new MockChunkReaderForAccumulation<string>(),
-				chunkReaderForScavenge: new MockChunkReaderForScavenge(), //qq real impl
+				chunkReaderForAccumulation: new ChunkReaderForAccumulator<string>(),
+				chunkReaderForScavenge: new ChunkReaderForScavenge(), //qq real impl
 				partitionManagerFactory: (r, w) => new LogV2PartitionManager()); ;
 		}
 
@@ -255,7 +255,7 @@ namespace EventStore.Core.LogAbstraction {
 			INameExistenceFilter streamExistenceFilter,
 			IExistenceFilterReader<TStreamId> streamExistenceFilterReader,
 			IRecordFactory<TStreamId> recordFactory,
-			IChunkReaderForAccumulation<TStreamId> chunkReaderForAccumulation,
+			IChunkReaderForAccumulator<TStreamId> chunkReaderForAccumulation,
 			IChunkReaderForScavenge<TStreamId> chunkReaderForScavenge,
 			bool supportsExplicitTransactions,
 			Func<ITransactionFileReader,ITransactionFileWriter,IPartitionManager> partitionManagerFactory) {
@@ -307,7 +307,7 @@ namespace EventStore.Core.LogAbstraction {
 		public INameExistenceFilter StreamExistenceFilter { get; }
 		public IExistenceFilterReader<TStreamId> StreamExistenceFilterReader { get; }
 		public IRecordFactory<TStreamId> RecordFactory { get; }
-		public IChunkReaderForAccumulation<TStreamId> ChunkReaderForAccumulation { get; }
+		public IChunkReaderForAccumulator<TStreamId> ChunkReaderForAccumulation { get; }
 		public IChunkReaderForScavenge<TStreamId> ChunkReaderForScavenge { get; }
 
 		public INameLookup<TStreamId> StreamNames => StreamNamesProvider.StreamNames;
