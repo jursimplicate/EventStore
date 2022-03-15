@@ -1,52 +1,47 @@
-﻿namespace EventStore.Core.TransactionLog.Scavenging {
+﻿using EventStore.Common.Utils;
+
+namespace EventStore.Core.TransactionLog.Scavenging {
 	public readonly struct DiscardPoint {
+		private DiscardPoint(long lastEventNumberToDiscard) {
+			LastEventNumberToDiscard = lastEventNumberToDiscard;
+		}
+
+		public static DiscardPoint DiscardIncluding(long eventNumber) =>
+			new(eventNumber);
+
+		public static DiscardPoint DiscardBefore(long eventNumber) =>
+			DiscardIncluding(eventNumber - 1);
+
+		public static DiscardPoint KeepAll { get; } = DiscardBefore(0);
+
+		public static DiscardPoint Tombstone { get; } = DiscardBefore(long.MaxValue);
+
+		public static DiscardPoint DiscardAll { get; } = DiscardIncluding(long.MaxValue);
+
 		//qq do we need as many bits as this
-		public readonly long Value;
+		public long LastEventNumberToDiscard { get; }
 
-		private DiscardPoint(long value) {
-			Value = value;
-		}
-
-		//qq make sure this is correct wrt the semantics of the Value
-		public static readonly DiscardPoint Tombstone = new(long.MaxValue);
-
-		//qq check semantic
-		// keeps all events
-		public static readonly DiscardPoint KeepAll = new(0);
-
-		//qq get this right wrt inclusive/exclusive. name? DiscardBefore ? 
-		public static DiscardPoint DiscardBefore(long value) {
-			return new(value);
-		}
-
-		public static DiscardPoint DiscardIncluding(long value) {
-			//qq if this is in range
-			return DiscardBefore(value + 1);
-		}
 		// Produces a discard point that discards when any of the provided discard points would discard
 		// i.e. takes the bigger of the two.
 		public static DiscardPoint AnyOf(DiscardPoint x, DiscardPoint y) {
-			return x.Value > y.Value ? x : y;
+			return x.LastEventNumberToDiscard > y.LastEventNumberToDiscard ? x : y;
 		}
 
-		//qq property? consider name and semantics
-		public bool IsNotMax() {
-			return Value < long.MaxValue;
-		}
+		public static bool operator ==(DiscardPoint x, DiscardPoint y) =>
+			x.LastEventNumberToDiscard == y.LastEventNumberToDiscard;
 
-		//qq depends on whether the DP is the first event to keep
-		// or the last event to discard. which in turn will depend on which is easier to generate
-		// consider the edges of the range actually. tombstone is long.max and usually we would/
-		// keep the tombstone but there is an option to discard it, in which case the value should
-		// presumably be long.max and it should be the last event to discard.
-		// we also need a way to express that we want to keep all the events. 
-		//qq we do need to have a discard point that means 'discard nothing'
-		public bool ShouldDiscard(long eventNumber) =>
-			eventNumber < Value;
+		public static bool operator !=(DiscardPoint x, DiscardPoint y) =>
+			x.LastEventNumberToDiscard != y.LastEventNumberToDiscard;
+
+		public override bool Equals(object obj) =>
+			obj is DiscardPoint that && this == that;
+
+		public override int GetHashCode() =>
+			LastEventNumberToDiscard.GetHashCode();
+
+		public bool ShouldDiscard(long eventNumber) {
+			Ensure.Nonnegative(eventNumber, nameof(eventNumber));
+			return eventNumber <= LastEventNumberToDiscard;
+		}
 	}
-
-	//qq note, probably need to complain if the ptable is a 32bit table
-	//qq maybe we need a collision free core that is just a map
-	//qq just a thought, lots of the metadatas might be equal, we might be able to store each uniqueb
-	// instance once. implementation detail.
 }

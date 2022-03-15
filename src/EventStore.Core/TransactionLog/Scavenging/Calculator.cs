@@ -147,7 +147,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			// if we are already discarding the maximum, then no need to bother adjusting it
 			// or calculating logPositionCutoff. we just discard everything except the tombstone.
-			if (discardPoint.IsNotMax()) {
+			if (discardPoint == DiscardPoint.Tombstone) {
 				//qq check these all carefuly
 
 				// Discard more if required by TruncateBefore
