@@ -14,10 +14,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			_index = index;
 		}
 
-		//qqq for the ones that do collide can we just not bother to scavenge it for now, but we
-		// do want to prove out that it will work later.
-		//qq do we need to calculate a discard point for every stream, or can we keep using a discard
-		// point that was calculated on a previous scavenge?
 		public void Calculate(
 			ScavengePoint scavengePoint,
 			IScavengeStateForCalculator<TStreamId> scavengeState) {
@@ -118,7 +114,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// SO:
 			// 1. determine an overall discard point from
 			//       - a) discard point (this covers Tombstones)
-			//       - b) tb //qq maybe
+			//       - b) truncate before
 			//       - c) maxcount
 			// 2. and a logposition cutoff for
 			//       - d) maxage   <- this one does require looking at the location of the events
@@ -128,11 +124,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			//
 			// there are, therefore, three discard points to keep clear,
 			//qq and which all need better names
-			// - the originalDiscardPoint determined by the Accumulator without respect to the
-			//   scavengepoint (but includes tombstone, //qq and probably TB)
-			// - the modifiedDiscardPoint which takes into account the maxcount by applying the
+			// - the `originalDiscardPoint` determined by the Accumulator without respect to the
+			//   scavengepoint (but includes tombstone)
+			// - the `modifiedDiscardPoint` which takes into account the maxcount and tb by applying the
 			//   scavenge point
-			// - the finalDiscardPoint which takes into account the max age and
+			// - the finalDiscardPoint which takes into account the maxage and
 			//   ensures not discarding the last event
 			//qq        ^ hum.. this last might involve moving the discard point backwards
 			//            so there are some points when we do need to move it backwards
@@ -147,11 +143,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			// if we are already discarding the maximum, then no need to bother adjusting it
 			// or calculating logPositionCutoff. we just discard everything except the tombstone.
-			if (discardPoint == DiscardPoint.Tombstone) {
+			if (discardPoint != DiscardPoint.Tombstone) {
 				//qq check these all carefuly
 
 				// Discard more if required by TruncateBefore
-				//qq probably build this into the accumulator
 				if (metadata.TruncateBefore is not null) {
 					var dpTruncateBefore = DiscardPoint.DiscardBefore(metadata.TruncateBefore.Value);
 					discardPoint = DiscardPoint.AnyOf(discardPoint, dpTruncateBefore);

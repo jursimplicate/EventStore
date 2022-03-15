@@ -91,10 +91,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				//qq probably only want to increase the discard point here, in order to respect tombstone
 				// although... if there was a tombstone then this record shouldn't exist, and if it does
 				// we probably want to ignore it
-				//qq event number wont be set if this metadata is in a transaction, unless we use teh allreader.
-				DiscardPoint = null, //qq record.EventNumber (or evtnuber - 1)
-				//IsHardDeleted = ,
-				//IsMetadataStreamHardDeleted = 
+				//qq event number wont be set if this metadata is in a transaction,
+				// unless we use teh allreader.
+				DiscardPoint = DiscardPoint.DiscardBefore(record.EventNumber),
 			};
 
 			state.SetMetastreamData(record.StreamId, newStreamData);

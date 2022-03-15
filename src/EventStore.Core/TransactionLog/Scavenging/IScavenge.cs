@@ -64,7 +64,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//
 	//  - Tombstone : Accumulator
 	//  - Static Metadata MaxCount 1 : Accumulator
-	//  - Metadata TruncateBefore : Accumulator //qq todo
+	//  - Metadata TruncateBefore : Calculator
 	//  - Metadata MaxCount : Calculator
 	//  - Metadata MaxAge : Calculator
 	//
@@ -75,7 +75,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// We don't account for MaxAge in the Accumulator because we need the ScavengePoint to define
 	// a time to calculate the age from.
 	//
-	// For streams that do not collide (which is ~all of them) the calculation can be done index-only -
+	// For streams that do not collide (which is ~all of them) the calculation can be done index-only.
 	// that is, without hitting the log at all.
 	public interface ICalculator<TStreamId> {
 		void Calculate(ScavengePoint scavengePoint, IScavengeStateForCalculator<TStreamId> source);
@@ -132,6 +132,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public class MetadataRecord : RecordForAccumulator<TStreamId> {
 			public TStreamId StreamId { get; set; }
 			public long LogPosition { get; set; }
+			public long EventNumber { get; set; }
 		}
 	}
 
@@ -298,9 +299,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public long? TruncateBefore { get; init; }
 
 		//qq this is the discard point of the metadata stream.
-		//qq consider if we want to have TB or jsut set the discard point directly
-		// might need to store the TB separately if we need to recalculate the DP using
-		// the TB later.
 		//qq not sure this wants to be nullable
 		public DiscardPoint? DiscardPoint { get; init; }
 
@@ -460,6 +458,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// - performance testing
 	// - forward port to master - ptables probably wont be a trivial change
 	// - probably forward/back port to 20.10 and 21.10
+	// - write docs
 	// - 
 	// ...
 	//
