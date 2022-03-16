@@ -85,7 +85,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// the chunk executor performs the actual removal of the log records
 	// should be very rare to do any further lookups at this point.
 	public interface IChunkExecutor<TStreamId> {
-		void Execute(IScavengeStateForChunkExecutor<TStreamId> instructions);
+		void Execute(
+			ScavengePoint scavengePoint,
+			IScavengeStateForChunkExecutor<TStreamId> instructions);
 	}
 
 	// the index executor performs the actual removal of the index entries
@@ -433,6 +435,34 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 	//qq dont forget about chunk merging.. maybe is that another phase after execution, or part of
 	// execution.
+	
+	//qq DETERMINISTIC SCAVENGE
+	// there are some interesting things to note/decide about this
+	// - when we write the scavenge point, it is in the open chunk, which we can't scavenge.
+	//   so at the time we write it, we cant scavenge up to the scavenge point.
+	//   but if we scavenged later, we would be able to scavenge right up to it.
+	//   but we want the scavenge to be deterministic, so perhaps it should always only scavenge
+	//   up to the end of the chunk before the chunk containing the scavenge point.
+	//   BUT what does it really mean to not scavenge the open chunk
+	//     - can we accumulate the content of the open chunk?
+	//     - can we calculate according to the content of the open chunk?
+	//     - can we execute the index of things that are in the open chunk?
+	//     - can we execute the open chunk itself?
+	//    quite possibly the answer to all these except the last is yes and still keep determinism.
+	//
+	// - to be deterministic, we may want to the chunk heuristic threshold (and other things?
+	//    unsafediscardtombstones?) properties of the ScavengePoint and instead of configuration options?
+	//
+	// - implications if the scavenge state is deleted, could we jump to the last scavenge point, or
+	//   would we need to scavenge each in turn (hopefully the former)
+	//
+	// - new scavenge is deterministic but the current state is important, ponder these:
+	//    - if old scavenge left the chunks in different states, new scavenge won't necessarily bring
+	//      them in line, or will it.
+	//    - if two nodes are at different points of the scavenge, then the chunks could be in different
+	//      states
+
+
 
 	//qq the hash collision detection is pretty key. it is how we efficiently scavenge the index.
 	// if we don't spot what collisions there are, and simply calculate DiscardPoints and store them
@@ -484,6 +514,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//   - stopped/resumed scavenge
 	//   - initial/subsequent scavenge
 	//   - merged chunks
+	//   - log record schema versions (esp wrt tombstones since it affects what the max value is)
 	//   - ...
 	//
 	//

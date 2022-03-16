@@ -29,13 +29,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					// which we might still want to get the timestamp of.
 					// oh and commit records which we probably want to handle the same as prepares
 					case RecordForAccumulator<TStreamId>.EventRecord x:
-						Accumulate(x, state);
+						ProcessEvent(x, state);
 						break;
 					case RecordForAccumulator<TStreamId>.MetadataRecord x:
-						Accumulate(x, state);
+						ProcessMetadata(x, state);
 						break;
 					case RecordForAccumulator<TStreamId>.TombStoneRecord x:
-						Accumulate(x, state);
+						ProcessTombstone(x, state);
 						break;
 					default:
 						throw new NotImplementedException(); //qq
@@ -57,13 +57,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//   OR we can cache the user of a hash against that hash. which has the advantage that if we
 		//      do come across a hash collision it might already be in the cache. but this is so rare
 		//      as to not be a concern. pick whichever turns out to be more obviously correct
-		private static void Accumulate(
+		private static void ProcessEvent(
 			RecordForAccumulator<TStreamId>.EventRecord record,
 			IScavengeStateForAccumulator<TStreamId> state) {
 			//qq hmm for transactions does this need to be the prepare log position,
 			// the commit log position, or, in fact, both? it would need to be the prepare position.
-			// can metadata be written as part of a transaction
-			// if so does that mean we need to do anything special when handling a metadata record
+			//qq can metadata be written as part of a transaction (decided will detect and abort as an
+			// unsupported case)
 			state.NotifyForCollisions(record.StreamId, record.LogPosition);
 		}
 
@@ -72,7 +72,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//   - cache the metadata against the metadatastream handle.
 		//         this causes scavenging of the original stream and the metadata stream.
 		//qq definitely add a test that metadata records get scavenged though
-		private void Accumulate(
+		private void ProcessMetadata(
 			RecordForAccumulator<TStreamId>.MetadataRecord record,
 			IScavengeStateForAccumulator<TStreamId> state) {
 
@@ -101,10 +101,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		// For every tombstone
-		//   - check if the stream collids
+		//   - check if the stream collides
 		//   - set the discard point for the stream that the tombstone was found in to discard
 		//     everything before the tombstone
-		private void Accumulate(
+		private void ProcessTombstone(
 			RecordForAccumulator<TStreamId>.TombStoneRecord record,
 			IScavengeStateForAccumulator<TStreamId> state) {
 

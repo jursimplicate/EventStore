@@ -154,6 +154,25 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				.CreateDb());
 		}
 
+		[Fact]
+		public void simple_tombstone() {
+			RunScenario(x => x
+				.Chunk(
+					Rec.Prepare(0, "ab-1"),
+					Rec.Delete(1, "ab-1"))
+				.CompleteLastChunk()
+				.CreateDb());
+		}
+
+		[Fact]
+		public void single_tombstone() {
+			RunScenario(x => x
+				.Chunk(
+					Rec.Delete(1, "ab-1"))
+				.CompleteLastChunk()
+				.CreateDb());
+		}
+
 		//qq refactor to base class
 		private static void RunScenario(
 			Func<TFChunkDbCreationHelper<LogFormat.V2, string>, DbResult> createDb) {

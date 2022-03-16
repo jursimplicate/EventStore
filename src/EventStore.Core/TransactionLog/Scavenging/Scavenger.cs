@@ -36,7 +36,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			_accumulator.Accumulate(scavengePoint, _scavengeState);
 			_calculator.Calculate(scavengePoint, _scavengeState);
-			_chunkExecutor.Execute(_scavengeState);
+			_chunkExecutor.Execute(scavengePoint, _scavengeState);
 			_indexExecutor.Execute(_scavengeState);
 			//qqqq tidy.. maybe call accumulator.done or something?
 		}

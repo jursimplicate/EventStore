@@ -10,28 +10,28 @@
 			_chunkReader = chunkReader;
 		}
 
-		public void Execute(IScavengeStateForChunkExecutor<TStreamId> scavengeState) {
+		public void Execute(
+			ScavengePoint scavengePoint,
+			IScavengeStateForChunkExecutor<TStreamId> scavengeState) {
+
 			//qq would we want to run in parallel? (be careful with scavenge state interactions
 			// in that case, especially writes)
 			//qq order by the heuristic?
 			//qq do we need to do them all
-			foreach (var chunkInstructions in scavengeState.ChunkInstructionss) {
-				ExecuteChunk(scavengeState, chunkInstructions);
+			//qq we probably wanna iterate through all the chunks though, not just the ones that we
+			// stored a weight for
+			//qq limited by a scavenge point
+
+			foreach (var chunkHeuristic in scavengeState.GetChunkHeuristics(scavengePoint)) {
+				ExecuteChunk(scavengeState, chunkHeuristic);
 				//qq careful if parallel
-				scavengeState.OnChunkScavenged(chunkInstructions.ChunkNumber);
+				scavengeState.OnChunkScavenged(chunkHeuristic.ChunkNumber);
 			}
 		}
 
 		private void ExecuteChunk(
 			IScavengeStateForChunkExecutor<TStreamId> scavengeState,
 			ChunkHeuristic chunkHeuristic) {
-
-			//qq make configurable, perhaps set in the scavenge point?
-			// ^ anything that affects the result of the scavenge needs to not be set in the node
-			// configuration, or it wouldn't be deterministic. that includes, for example, the
-			// unsafe option that discards the tombstones
-			// ... can we guarantee determinism if the scavenge state is deleted?
-			//  would we have to scavenge through every scavenge point instead of jumping to the last?
 
 			//qq might this want to consider the size of the chunk too, since it may have been scavenged
 			// before

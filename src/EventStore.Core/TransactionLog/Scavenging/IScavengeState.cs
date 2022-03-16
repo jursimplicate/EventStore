@@ -44,6 +44,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		bool TryGetMetastreamData(TStreamId streamId, out MetastreamData metastreamData);
 		void SetMetastreamData(TStreamId streamId, MetastreamData streamData);
 
+		// no need for the accumulator to get the original stream data, all it does with it is sets it
+		// on tombstone, for which the previous value is not relevant.
 		void SetOriginalStreamData(TStreamId streamId, DiscardPoint discardPoint);
 	}
 
@@ -68,19 +70,18 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//qq needs to work for metadata streams and also for original streams
 	// but that is easy enough because we can see if the streamid is for a metastream or not
 	public interface IScavengeStateForChunkExecutor<TStreamId> {
-		IEnumerable<ChunkHeuristic> ChunkInstructionss { get; } //qq name
+		IEnumerable<ChunkHeuristic> GetChunkHeuristics(ScavengePoint scavengePoint);
 		bool TryGetDiscardPoint(TStreamId streamId, out DiscardPoint discardPoint);
 		//qq complication around logical/physical chunks and merging?
 		bool OnChunkScavenged(int chunkNumber);
 	}
 
-		//qq needs to work for metadata streams and also for original streams
-		//qq which is awkward because if we only have the hash we don't know which it is
-		// we would need to check in both maps which is not ideal.
-		//qq ^ the index executor should be smart enough though to only call this once per non-colliding stream.
-		public interface IScavengeStateForIndexExecutor<TStreamId> {
+	//qq needs to work for metadata streams and also for original streams
+	//qq which is awkward because if we only have the hash we don't know which it is
+	// we would need to check in both maps which is not ideal.
+	//qq ^ the index executor should be smart enough though to only call this once per non-colliding stream.
+	public interface IScavengeStateForIndexExecutor<TStreamId> {
 		bool IsCollision(ulong streamHash);
-		//qq this has to work for both metadata streams and non-metadata streams
 		//qq precondition: the streamhandle must be of the correct kind.
 		bool TryGetDiscardPoint(StreamHandle<TStreamId> streamHandle, out DiscardPoint discardPoint);
 	}

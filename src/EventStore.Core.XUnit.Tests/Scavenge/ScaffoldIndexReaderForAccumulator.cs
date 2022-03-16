@@ -102,6 +102,27 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 							StreamId = prepare.EventStreamId,
 						};
 					} else if (prepare.EventType == SystemEventTypes.StreamDeleted) {
+						//qq maybe the eventtype is enough. if we also check the expected version then
+						// we'd want to be careful about prepare version 0 tombstones.
+						// is the StreamDelete prepare flag relevant?
+						//qq does anywhere else in the scavenge logic rely on the tombstone
+						// having a particular expected version
+						// does a tombstone get indexed, are we expecting to find it in the index
+						// it would mean that we can't just just set the DiscardPoint to DP.Tombstone
+						// and have it discard events that are before then if the tombstone is, in fact
+						// before then! what does old scavenge do? old scavenge uses the prepare flag
+						// to detect that it is a tombstone and keep it. we can do that in the log
+						// but can't do that index only.
+						// it looooks like the indexreader knows a stream is deleted by seeing its
+						// event number is EventNumber.DeletedStream i.e. long.max
+						// so maybe the event number is the thing that matters. presumably this works
+						// for old prepares too...... aha in the index reader the latest version number
+						//  _always_ comes from the index and not from the record itself, so perhaps we
+						// upgraded the maxvalue as part of upgrading the ptable
+						// in which case the index entry for the tombstone might have a different
+						// eventnumber to the expected version of the record in the log.
+						// hmm!
+
 						yield return new RecordForAccumulator<string>.TombStoneRecord {
 							LogPosition = prepare.LogPosition,
 							StreamId = prepare.EventStreamId,
@@ -135,7 +156,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			foreach (var chunk in _log) {
 				foreach (var record in chunk) {
 					if (record.LogPosition >= stopBefore)
-						goto Done;
+						return lastEventNumber;
 
 					if (record is not IPrepareLogRecord<string> prepare)
 						continue;
@@ -151,10 +172,6 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					}
 				}
 			}
-
-			Done:
-			if (lastEventNumber == -1)
-				throw new Exception("pokeg"); //qq not necessarily the right way to deal with this
 
 			return lastEventNumber;
 		}

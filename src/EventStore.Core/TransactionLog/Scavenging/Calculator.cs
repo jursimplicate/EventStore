@@ -137,9 +137,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			//            so there are some points when we do need to move it backwards
 			// this method calculates the FinalDiscardPoint
 
-			//qq the stream really should exist but consider what will happen here if it doesn't
-			//qqqqqqq erm, why should it exist, what if it just doesn't, or doesn't before the 
-			// scavenge point.
+			//qq consider what will happen here if the strea, doesn't exist
 			//  if it doesn't exist at all then presumably there is nothing to scavenge
 			//    we can set the disard point to anything
 			//  if it doesn't exist before the scavenge point but does later then

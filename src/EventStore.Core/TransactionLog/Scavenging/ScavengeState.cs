@@ -121,19 +121,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 		}
 
-		public bool TryGetMetastreamData(TStreamId streamId, out MetastreamData metastreamData) =>
-			_metadatas.TryGetValue(streamId, out metastreamData);
+		public bool TryGetMetastreamData(TStreamId streamId, out MetastreamData streamData) =>
+			_metadatas.TryGetValue(streamId, out streamData);
 	
 		public void SetMetastreamData(TStreamId streamId, MetastreamData streamData) {
 			_metadatas[streamId] = streamData;
 		}
 
-		public bool TryGetOriginalStreamData(TStreamId streamId, out DiscardPoint discardPoint) =>
-			_originalStreamDatas.TryGetValue(streamId, out discardPoint);
-
 		public void SetOriginalStreamData(TStreamId streamId, DiscardPoint streamData) {
-			throw new NotImplementedException();
-			//qq _originalStreamDatas[streamId] = streamData;
+			_originalStreamDatas[streamId] = streamData;
 		}
 
 
@@ -171,7 +167,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 
-		//qqqq need persistent version
+		//qqqq inject, maybe even use IScavengeMap interface for now.
 		private readonly Dictionary<int, long> _chunkWeights = new();
 
 
@@ -180,7 +176,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// FOR CHUNK EXECUTOR
 		//
 
-		public IEnumerable<ChunkHeuristic> ChunkInstructionss =>
+		public IEnumerable<ChunkHeuristic> GetChunkHeuristics(ScavengePoint scavengePoint) =>
 			_chunkWeights.Select(x => new ChunkHeuristic {
 				ChunkNumber = x.Key,
 				Weight = x.Value,
