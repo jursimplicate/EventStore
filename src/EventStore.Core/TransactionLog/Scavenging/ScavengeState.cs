@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using EventStore.Core.Index.Hashes;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
@@ -90,14 +91,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// STUFF THAT CAME FROM COLLISION MANAGER
 		//
 
-		public void DetectCollisions(TStreamId key, long position) {
-			var collisionResult = _collisionDetector.DetectCollisions(key, position, out var collision);
-			if (collisionResult == CollisionResult.NewCollision) {
-				_metadatas.NotifyCollision(collision);
-				_originalStreamDatas.NotifyCollision(collision);
-			}
-		}
-
 		//qq method? property? enumerable? array? clunky allocations at the moment.
 		public IEnumerable<TStreamId> Collisions() {
 			return _collisionDetector.GetAllCollisions();
@@ -117,24 +110,26 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		public void NotifyForCollisions(TStreamId streamId, long position) {
 			//qq want to make use of the _s?
-			_ = _collisionDetector.DetectCollisions(streamId, position, out _);
+			var collisionResult = _collisionDetector.DetectCollisions(
+				streamId,
+				position,
+				out var collision);
+
+			if (collisionResult == CollisionResult.NewCollision) {
+				_metadatas.NotifyCollision(collision);
+				_originalStreamDatas.NotifyCollision(collision);
+			}
 		}
 
-		public MetastreamData GetMetastreamData(TStreamId streamId) {
-			if (!_metadatas.TryGetValue(streamId, out var streamData))
-				streamData = MetastreamData.Empty;
-			return streamData;
-		}
-
+		public bool TryGetMetastreamData(TStreamId streamId, out MetastreamData metastreamData) =>
+			_metadatas.TryGetValue(streamId, out metastreamData);
+	
 		public void SetMetastreamData(TStreamId streamId, MetastreamData streamData) {
 			_metadatas[streamId] = streamData;
 		}
 
-		public DiscardPoint GetOriginalStreamData(TStreamId streamId) {
-			if (!_originalStreamDatas.TryGetValue(streamId, out var streamData))
-				streamData = DiscardPoint.KeepAll;
-			return streamData;
-		}
+		public bool TryGetOriginalStreamData(TStreamId streamId, out DiscardPoint discardPoint) =>
+			_originalStreamDatas.TryGetValue(streamId, out discardPoint);
 
 		public void SetOriginalStreamData(TStreamId streamId, DiscardPoint streamData) {
 			throw new NotImplementedException();
@@ -159,18 +154,25 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			StreamHandle<TStreamId> streamHandle,
 			DiscardPoint discardPoint) {
 
-			throw new NotImplementedException();
-//			_scavengeableStreams[stream] = dp;
+			_originalStreamDatas[streamHandle] = discardPoint;
 		}
 
-		public DiscardPoint GetOriginalStreamData(StreamHandle<TStreamId> streamHandle) {
-			throw new NotImplementedException(); //qqqq
+		public bool TryGetOriginalStreamData(
+			StreamHandle<TStreamId> streamHandle,
+			out DiscardPoint discardPoint) =>
+
+			_originalStreamDatas.TryGetValue(streamHandle, out discardPoint);
+
+		public bool TryGetHeuristic(int chunkNumber, out long heuristic) =>
+			_chunkWeights.TryGetValue(chunkNumber, out heuristic);
+
+		public void SetHeuristic(int chunkNumber, long heuristic) {
+			_chunkWeights[chunkNumber] = heuristic;
 		}
 
 
-
-
-
+		//qqqq need persistent version
+		private readonly Dictionary<int, long> _chunkWeights = new();
 
 
 
@@ -178,11 +180,18 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// FOR CHUNK EXECUTOR
 		//
 
-		public IEnumerable<IReadOnlyChunkScavengeInstructions<TStreamId>> ChunkInstructionss =>
-			throw new NotImplementedException();
+		public IEnumerable<ChunkHeuristic> ChunkInstructionss =>
+			_chunkWeights.Select(x => new ChunkHeuristic {
+				ChunkNumber = x.Key,
+				Weight = x.Value,
+			});
 
 		//qq this has to work for both metadata streams and non-metadata streams
-		public DiscardPoint GetDiscardPoint(TStreamId streamHandle) {
+		public bool TryGetDiscardPoint(TStreamId streamHandle, out DiscardPoint discardPoint) {
+			throw new NotImplementedException();
+		}
+
+		public bool OnChunkScavenged(int chunkNumber) {
 			throw new NotImplementedException();
 		}
 
@@ -190,13 +199,37 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// FOR INDEX EXECUTOR
 		//
 
-		//qq this has to work for both metadata streams and non-metadata streams
-		public DiscardPoint GetDiscardPoint(StreamHandle<TStreamId> streamHandle) {
-			throw new NotImplementedException();
+		public bool TryGetDiscardPoint(
+			StreamHandle<TStreamId> streamHandle,
+			out DiscardPoint discardPoint) {
+
+			//qq here we know that the streamHandle is of the correct kind, so if it is a hash handle
+			// then we know the hash does not collide, but we do not know whether it is for a 
+			// stream or a metastream. but since we know it does not collide we can just check
+			// both maps (better if we didnt have to though..)
+			//if (streamHandle.IsHash) {
+			//	if (_metadatas.TryGetValue(streamHandle, out var metastreamData)) {
+			//		return metastreamData.DiscardPoint.Value;
+			//	}
+
+			//} else {
+			//	//qqqq temp. it might be null, it might not be a metadata stream
+			//	return _metadatas[streamHandle.StreamId].DiscardPoint.Value;
+			//}
+
+			discardPoint = DiscardPoint.KeepAll;
+			return true;
 		}
 
 		public bool IsCollision(ulong streamHash) {
-			throw new NotImplementedException();
+			//qq track these as we go rather than calculating each time on demand.
+			var collidingHashes = new HashSet<ulong>();
+			
+			foreach (var collidingKey in _collisionDetector.GetAllCollisions()) {
+				collidingHashes.Add(_hasher.Hash(collidingKey));
+			}
+
+			return collidingHashes.Contains(streamHash);
 		}
 	}
 }

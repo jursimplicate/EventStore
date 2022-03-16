@@ -53,24 +53,27 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			//qq save ptable, swap it in, etc.
 		}
 
-		public DiscardPoint GetDiscardPoint(
+		private DiscardPoint GetDiscardPoint(
 			IScavengeStateForIndexExecutor<TStreamId> state,
 			ulong hash,
 			bool isCollision) {
+
+			StreamHandle<TStreamId> handle = default;
 
 			if (isCollision) {
 				// collision, we need to get the event for this position, see what stream it is
 				// really for, and look up the discard point by streamId.
 				TStreamId streamId = default; //qq _index.ReadEvent(indexEntry.Position).StreamId;
-				var streamHandle = StreamHandle.ForStreamId(streamId);
-				return state.GetDiscardPoint(streamHandle);
+				handle = StreamHandle.ForStreamId(streamId);
 
 			} else {
 				// not a collision, we can get the discard point by hash.
-				var streamHandle = StreamHandle.ForHash<TStreamId>(hash);
-				return state.GetDiscardPoint(streamHandle);
+				handle = StreamHandle.ForHash<TStreamId>(hash);
 			}
 
+			return state.TryGetDiscardPoint(handle, out var discardPoint)
+				? discardPoint
+				: DiscardPoint.KeepAll;
 		}
 	}
 }

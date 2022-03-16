@@ -18,14 +18,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// and you can iterate through everything.
 
 
-	//qq this is wrapping the 
-	//qq rename once it has some shape.
-	//
-	//qqqq hum now that we want to handle tombstones separately, we will likely want to 
-	// share one collision detector between two CollisionManagers.... but then
-	// we shouldn't call detect collisions in here at all.
+	//qq rename
 	public class CollisionManager<TKey, TValue> {
-		//qq inject the storage here so it can in mem or not
 		private readonly IScavengeMap<ulong, TValue> _nonCollisions;
 		private readonly IScavengeMap<TKey, TValue> _collisions;
 		private readonly ILongHasher<TKey> _hasher;
@@ -47,6 +41,33 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			//qq is this any different to checking isCollision and then picking the map
 			return _collisions.TryGetValue(key, out value)
 				|| _nonCollisions.TryGetValue(_hasher.Hash(key), out value);
+		}
+
+		//qq better for this to take a ulong or a handle.. if handle then is the Key overload obsolete?
+		// perhaps the difference is when providing a handle we are saying we know how we want to look
+		// this up (we know if it is a collision), and if we provide the full key we are saying 
+		// 'dont care whether it is a collision or not'.
+		public bool TryGetValue(StreamHandle<TKey> handle, out TValue value) =>
+			handle.IsHash ?
+				_nonCollisions.TryGetValue(handle.StreamHash, out value) :
+				_collisions.TryGetValue(handle.StreamId, out value);
+
+		//qqqqqq consider this api and its preconditions. would it be better to have an indexer setter
+		// and indeed an indexer getter
+		// make sure to document the preconditions.
+		public TValue this[StreamHandle<TKey> handle] {
+			get {
+				if (!TryGetValue(handle, out var v))
+					throw new KeyNotFoundException(); //qq detail
+				return v;
+			}
+			set {
+				if (handle.IsHash) {
+					_nonCollisions[handle.StreamHash] = value;
+				} else {
+					_collisions[handle.StreamId] = value;
+				}
+			}
 		}
 
 		//qq it is required that the key we use is already checked for collisions.
@@ -72,8 +93,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 
 			set {
-				//qq do we want isCollision in here or do we want to check it out there
-				// and have the sette take a StreamHandle
 				if (_isCollision(key)) {
 					_collisions[key] = value;
 				} else {

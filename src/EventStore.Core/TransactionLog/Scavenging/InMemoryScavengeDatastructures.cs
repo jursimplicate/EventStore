@@ -15,21 +15,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//	}
 	//}
 
-	public class InMemoryChunkScavengeInstructions<TStreamId> : IChunkScavengeInstructions<TStreamId> {
-		public int ChunkNumber => throw new System.NotImplementedException();
-
-		public IDictionary<TStreamId, long> EarliestEventsToKeep {
-			get => throw new System.NotImplementedException();
-			set => throw new System.NotImplementedException();
-		}
-
-		public int NumRecordsToDiscard { get; private set; }
-
-		public void Discard() {
-			throw new System.NotImplementedException();
-		}
-	}
-
 	public class InMemoryIndexReaderForAccumulator<TStreamId> : IIndexReaderForAccumulator<TStreamId> {
 		public bool HashInUseBefore(ulong hash, long postion, out TStreamId hashUser) {
 			throw new System.NotImplementedException();

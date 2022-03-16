@@ -78,16 +78,17 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			state.NotifyForCollisions(record.StreamId, record.LogPosition);
 
-			var streamData = state.GetMetastreamData(record.StreamId);
+			if (!state.TryGetMetastreamData(record.StreamId, out var metaStreamData))
+				metaStreamData = MetastreamData.Empty;
 
 			//qqqq set the new stream data, leave the harddeleted flag alone.
 			// consider if streamdata really wants to be immutable. also c# records not supported in v5
 			var originalStream = _metastreamLookup.OriginalStreamOf(record.StreamId);
-			var newStreamData = streamData with {
+			var newStreamData = metaStreamData with {
 				OriginalStreamHash = _hasher.Hash(originalStream),
-				MaxAge = null, //qq actually set these correctly
-				MaxCount = 345,
-				TruncateBefore = 567,
+				MaxAge = record.Metadata.MaxAge,
+				MaxCount = record.Metadata.MaxCount,
+				TruncateBefore = record.Metadata.TruncateBefore,
 				//qq probably only want to increase the discard point here, in order to respect tombstone
 				// although... if there was a tombstone then this record shouldn't exist, and if it does
 				// we probably want to ignore it
@@ -111,11 +112,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			// it is possible, though maybe very unusual, to find a tombstone in a metadata stream
 			if (_metastreamLookup.IsMetaStream(record.StreamId)) {
-				var streamData = state.GetMetastreamData(record.StreamId);
-				streamData = streamData with {
+				if (!state.TryGetMetastreamData(record.StreamId, out var metaStreamData))
+					metaStreamData = MetastreamData.Empty;
+
+				metaStreamData = metaStreamData with {
 					DiscardPoint = DiscardPoint.Tombstone,
 				};
-				state.SetMetastreamData(record.StreamId, streamData);
+				state.SetMetastreamData(record.StreamId, metaStreamData);
 			} else {
 				// get the streamData for the stream, tell it the stream is deleted
 				state.SetOriginalStreamData(record.StreamId, DiscardPoint.Tombstone);

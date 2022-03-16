@@ -43,5 +43,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			Ensure.Nonnegative(eventNumber, nameof(eventNumber));
 			return eventNumber <= LastEventNumberToDiscard;
 		}
+
+		public override string ToString() =>
+			$"Discard including {LastEventNumberToDiscard}";
 	}
 }

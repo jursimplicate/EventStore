@@ -10,21 +10,33 @@
 			_chunkReader = chunkReader;
 		}
 
-		public void Execute(IScavengeStateForChunkExecutor<TStreamId> instructions) {
-			foreach (var chunkInstructions in instructions.ChunkInstructionss) {
-				ExecuteChunk(instructions, chunkInstructions);
+		public void Execute(IScavengeStateForChunkExecutor<TStreamId> scavengeState) {
+			//qq would we want to run in parallel? (be careful with scavenge state interactions
+			// in that case, especially writes)
+			//qq order by the heuristic?
+			//qq do we need to do them all
+			foreach (var chunkInstructions in scavengeState.ChunkInstructionss) {
+				ExecuteChunk(scavengeState, chunkInstructions);
+				//qq careful if parallel
+				scavengeState.OnChunkScavenged(chunkInstructions.ChunkNumber);
 			}
 		}
 
 		private void ExecuteChunk(
-			IScavengeStateForChunkExecutor<TStreamId> scavengeInstructions,
-			IReadOnlyChunkScavengeInstructions<TStreamId> chunkInstructions) {
+			IScavengeStateForChunkExecutor<TStreamId> scavengeState,
+			ChunkHeuristic chunkHeuristic) {
 
-			//qq make configurable
+			//qq make configurable, perhaps set in the scavenge point?
+			// ^ anything that affects the result of the scavenge needs to not be set in the node
+			// configuration, or it wouldn't be deterministic. that includes, for example, the
+			// unsafe option that discards the tombstones
+			// ... can we guarantee determinism if the scavenge state is deleted?
+			//  would we have to scavenge through every scavenge point instead of jumping to the last?
+
 			//qq might this want to consider the size of the chunk too, since it may have been scavenged
 			// before
 			var threshold = 1000;
-			if (chunkInstructions.NumRecordsToDiscard < threshold) {
+			if (chunkHeuristic.Weight < threshold) {
 				// they'll still (typically) be removed from the index
 				return;
 			}
@@ -56,7 +68,7 @@
 			// if physical, then we can get the physical chunk from the chunk manager and process it
 			// if logical then bear in mind that the chunk we get from the chunk manager is the whole
 			// physical file
-			var chunk = _chunkManager.GetChunk(chunkInstructions.ChunkNumber);
+			var chunk = _chunkManager.GetChunk(chunkHeuristic.ChunkNumber);
 
 			//qq var newChunk = ???;
 
@@ -71,7 +83,9 @@
 				// removing events from the log without removing them from the index
 
 				//qq hmm events in transactions do not have an EventNumber
-				var discardPoint = scavengeInstructions.GetDiscardPoint(record.StreamId);
+				if (!scavengeState.TryGetDiscardPoint(record.StreamId, out var discardPoint))
+					discardPoint = DiscardPoint.KeepAll;
+
 				if (discardPoint.ShouldDiscard(record.EventNumber)) {
 
 					//qq discard record

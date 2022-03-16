@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using EventStore.Core.Data;
 using EventStore.Core.Index.Hashes;
 using EventStore.Core.Services;
 using EventStore.Core.TransactionLog.Chunks.TFChunk;
@@ -97,6 +98,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 						yield return new RecordForAccumulator<string>.MetadataRecord {
 							EventNumber = prepare.ExpectedVersion + 1,
 							LogPosition = prepare.LogPosition,
+							Metadata = StreamMetadata.FromJsonBytes(prepare.Data),
 							StreamId = prepare.EventStreamId,
 						};
 					} else if (prepare.EventType == SystemEventTypes.StreamDeleted) {
@@ -117,15 +119,71 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 
 	public class ScaffoldIndexForScavenge : IIndexReaderForCalculator<string> {
-		public ScaffoldIndexForScavenge(ILogRecord[][] log) {
+		private readonly ILogRecord[][] _log;
+		private readonly ILongHasher<string> _hasher;
+
+		public ScaffoldIndexForScavenge(ILogRecord[][] log, ILongHasher<string> hasher) {
+			_log = log;
+			_hasher = hasher;
 		}
 
-		public long GetLastEventNumber(StreamHandle<string> stream, long scavengePoint) {
-			throw new NotImplementedException();
+		public long GetLastEventNumber(StreamHandle<string> streamHandle, ScavengePoint scavengePoint) {
+			var lastEventNumber = -1L;
+			//qq technically should only to consider committed prepares but probably doesn't matter
+			// for our purposes here.
+			var stopBefore = scavengePoint.Position;
+			foreach (var chunk in _log) {
+				foreach (var record in chunk) {
+					if (record.LogPosition >= stopBefore)
+						goto Done;
+
+					if (record is not IPrepareLogRecord<string> prepare)
+						continue;
+
+					if (streamHandle.IsHash) {
+						if (_hasher.Hash(prepare.EventStreamId) == streamHandle.StreamHash) {
+							lastEventNumber = prepare.ExpectedVersion + 1;
+						}
+					} else {
+						if (prepare.EventStreamId == streamHandle.StreamId) {
+							lastEventNumber = prepare.ExpectedVersion + 1;
+						}
+					}
+				}
+			}
+
+			Done:
+			if (lastEventNumber == -1)
+				throw new Exception("pokeg"); //qq not necessarily the right way to deal with this
+
+			return lastEventNumber;
 		}
 
-		public EventInfo[] ReadEventInfoForward(StreamHandle<string> stream, long fromEventNumber, int maxCount) {
-			throw new NotImplementedException();
+		public EventInfo[] ReadEventInfoForward(
+			StreamHandle<string> stream,
+			long fromEventNumber,
+			int maxCount,
+			ScavengePoint scavengePoint) {
+
+			var result = new List<EventInfo>();
+
+			var stopBefore = scavengePoint.Position;
+
+			foreach (var chunk in _log) {
+				foreach (var record in chunk) {
+					if (record.LogPosition >= stopBefore)
+						goto Done;
+
+					if (record is not IPrepareLogRecord<string> prepare)
+						continue;
+
+					//qqqqqqqqq filter according to stream
+					result.Add(new EventInfo(prepare.LogPosition, prepare.ExpectedVersion + 1));
+				}
+			}
+
+			Done:
+			return result.ToArray();
 		}
 	}
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using EventStore.Core.Data;
 using EventStore.Core.TransactionLog.Chunks.TFChunk;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
@@ -136,6 +137,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			public MetadataRecord() {}
 			public TStreamId StreamId { get; set; }
 			public long LogPosition { get; set; }
+			public StreamMetadata Metadata { get; set; }
 			public long EventNumber { get; set; }
 		}
 	}
@@ -165,13 +167,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 
 
-	//qq this contains enough information about what needs to be removed from each
-	// chunk that we can decide whether to scavenge each one (based on some threshold)
-	// or leave it until it has more junk in.
-	// in order to figure out how much will be scavenged we probably had to do various
-	// lookups. expect that we will probably may as well preserve that information so
-	// that the execution itself can be done quickly, prolly without additional lookups
-	//
 	//qqq this is now IStateForChunkExecutor
 	//public interface IScavengeInstructions<TStreamId> {
 	//	//qqqqq is chunknumber the logical chunk number?
@@ -181,29 +176,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//	bool TryGetDiscardPoint(TStreamId streamId, out DiscardPoint discardPoint);
 	//}
 
-	// instructions (see above) for scavenging a particular chunk.
-	public interface IReadOnlyChunkScavengeInstructions<TStreamId> {
-		int ChunkNumber { get; } //qq logical or phsyical?
+	public struct ChunkHeuristic {
+		//qq logical or phsyical?
+		public int ChunkNumber { get; init; }
 
-		//qq int or long? necessarily bytes or rather accumulated weight, or maybe it can jsut be approx.
-		// maybe just event count will be sufficient if it helps us to not look up records
-		// currently we have to look them up anyway for hash collisions, so just run with that.
-		// later we may switch to record count if it helps save lookups - or the index may even be able
-		// to imply the size of the record (approximately?) once we have the '$all' stream index.
-		int NumRecordsToDiscard { get; }
+		//qq int or long? 
+		//qq maybe call it weight? since it isn't an exact number just a heuristic
+		public long Weight { get; init; }
 	}
 
-	//qq consider if we want to use this readonly pattern for the scavenge instructions too
-	public interface IChunkScavengeInstructions<TStreamId> :
-		IReadOnlyChunkScavengeInstructions<TStreamId> {
-		// we call this for each event that we want to discard
-		// probably it is better to list what we want to discard rather than what we want to keep
-		// because in a well scavenged log we will want to keep more than we want to remove
-		// in a typical scavenge.
-
-		//qq now that we dont have args here, perhaps it should be called 'increment' or similar
-		void Discard();
-	}
 
 	//qq name
 	public interface IIndexReaderForAccumulator<TStreamId> {
@@ -218,25 +199,27 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public readonly struct EventInfo {
 		public readonly long LogPosition;
 		public readonly long EventNumber;
+
+		public EventInfo(long logPosition, long eventNumber) {
+			LogPosition = logPosition;
+			EventNumber = eventNumber;
+		}
 	}
 
 	//qq name
 	public interface IIndexReaderForCalculator<TStreamId> {
 		//qq maxposition  / positionlimit instead of scavengepoint?
-		//qq better name than 'stream'...
-		long GetLastEventNumber(StreamHandle<TStreamId> stream, long scavengePoint);
+		long GetLastEventNumber(StreamHandle<TStreamId> streamHandle, ScavengePoint scavengePoint);
 
 		//qq name min age or maxage or 
 		//long GetLastEventNumber(TStreamId streamId, DateTime age);
 
 		//qq maybe we can do better than allocating an array for the return
-		//qqqqq should take a scavengepoint/maxpos?
-		//qq better name that indicates that this doesn't return the events - 
-		// in fact it doesn't usually touch the log at all
 		EventInfo[] ReadEventInfoForward(
 			StreamHandle<TStreamId> stream,
 			long fromEventNumber,
-			int maxCount);
+			int maxCount,
+			ScavengePoint scavengePoint);
 	}
 
 	// Refers to a stream by name or by hash
@@ -315,7 +298,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//public long MetadataPosition { get; init; } //qq to be able to scavenge the metadata
 
 		//qq prolly at the others
-		public override string ToString() => $"MaxCount: {MaxCount}";
+		public override string ToString() =>
+			$"OriginalStreamHash: {OriginalStreamHash} " +
+			$"MaxCount: {MaxCount} " +
+			$"MaxAge: {MaxAge} " +
+			$"TruncateBefore: {TruncateBefore} " +
+			$"DiscardPoint: {DiscardPoint} " +
+			"";
 	}
 
 

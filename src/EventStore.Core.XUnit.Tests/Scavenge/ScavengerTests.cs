@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using EventStore.Core.Data;
 using EventStore.Core.LogV2;
@@ -31,7 +32,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					// instead the stream should be called "ma1" which hashes to #a "$$ma1" which hashes
 					// to #m and the hasher chooses which character depending on whether it is a metadta
 					// stream.
-					Rec.Prepare(1, "$$ab-1", metadata: _meta1))
+					Rec.Prepare(1, "$$ab-1", "$metadata", metadata: _meta1))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -51,7 +52,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			RunScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
-					Rec.Prepare(0, "ab-2"))
+					Rec.Prepare(1, "ab-2"))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -61,7 +62,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			RunScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
-					Rec.Prepare(1, "$$ab-1", metadata: _meta1))
+					Rec.Prepare(1, "$$ab-1", "$metadata", metadata: _meta1))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -76,7 +77,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			RunScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "aa-1"),
-					Rec.Prepare(1, "$$aa-1", metadata: _meta1))
+					Rec.Prepare(1, "$$aa-1", "$metadata", metadata: _meta1))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -87,7 +88,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void darn() {
 			RunScenario(x => x
 				.Chunk(
-					Rec.Prepare(0, "$$ab-1", metadata: _meta1),
+					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: _meta1),
 					Rec.Prepare(1, "cb-2"))
 				.CompleteLastChunk()
 				.CreateDb());
@@ -97,8 +98,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void metadatas_for_different_streams_non_colliding() {
 			RunScenario(x => x
 				.Chunk(
-					Rec.Prepare(0, "$$ab-1", metadata: _meta1),
-					Rec.Prepare(1, "$$cd-2", metadata: _meta2))
+					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: _meta1),
+					Rec.Prepare(1, "$$cd-2", "$metadata", metadata: _meta2))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -107,8 +108,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void metadatas_for_different_streams_all_colliding() {
 			RunScenario(x => x
 				.Chunk(
-					Rec.Prepare(0, "$$aa-1", metadata: _meta1),
-					Rec.Prepare(1, "$$aa-2", metadata: _meta2))
+					Rec.Prepare(0, "$$aa-1", "$metadata", metadata: _meta1),
+					Rec.Prepare(1, "$$aa-2", "$metadata", metadata: _meta2))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -117,8 +118,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void metadatas_for_different_streams_original_streams_colliding() {
 			RunScenario(x => x
 				.Chunk(
-					Rec.Prepare(0, "$$ab-1", metadata: _meta1),
-					Rec.Prepare(1, "$$cb-2", metadata: _meta2))
+					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: _meta1),
+					Rec.Prepare(1, "$$cb-2", "$metadata", metadata: _meta2))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -127,8 +128,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void metadatas_for_different_streams_meta_streams_colliding() {
 			RunScenario(x => x
 				.Chunk(
-					Rec.Prepare(0, "$$ab-1", metadata: _meta1),
-					Rec.Prepare(1, "$$ac-2", metadata: _meta2))
+					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: _meta1),
+					Rec.Prepare(1, "$$ac-2", "$metadata", metadata: _meta2))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -137,8 +138,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void metadatas_for_different_streams_original_and_meta_colliding() {
 			RunScenario(x => x
 				.Chunk(
-					Rec.Prepare(0, "$$ab-1", metadata: _meta1),
-					Rec.Prepare(1, "$$ab-2", metadata: _meta2))
+					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: _meta1),
+					Rec.Prepare(1, "$$ab-2", "$metadata", metadata: _meta2))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -147,8 +148,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public void metadatas_for_different_streams_cross_colliding() {
 			RunScenario(x => x
 				.Chunk(
-					Rec.Prepare(0, "$$ab-1", metadata: _meta1),
-					Rec.Prepare(1, "$$ba-2", metadata: _meta2))
+					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: _meta1),
+					Rec.Prepare(1, "$$ba-2", "$metadata", metadata: _meta2))
 				.CompleteLastChunk()
 				.CreateDb());
 		}
@@ -202,9 +203,9 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				new Accumulator<string>(
 					hasher: hasher,
 					metastreamLookup: metastreamLookup,
-					chunkReader: new ScaffoldChunkReaderForAccumulator<string>(log)),
+					chunkReader: new ScaffoldChunkReaderForAccumulator(log)),
 				new Calculator<string>(
-					index: new ScaffoldIndexForScavenge(log)),
+					index: new ScaffoldIndexForScavenge(log, hasher)),
 				new ChunkExecutor<string>(
 					chunkManager: new ScaffoldChunkManagerForScavenge(),
 					chunkReader: new ScaffoldChunkReaderForScavenge(log)),
@@ -293,14 +294,17 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				}
 			}
 
-			// 2b. aseert that we can find each one
+			// 2b. assert that we can find each one
+			var compareOnlyMetadata = new CompareOnlyMetadata();
 			foreach (var kvp in expectedMetadataPerStream) {
-				var meta = scavengeState.GetMetastreamData(kvp.Key);
-				Assert.Equal(kvp.Value, meta); //qqqqqqq need proper compare
+				if (!scavengeState.TryGetMetastreamData(kvp.Key, out var meta))
+					meta = MetastreamData.Empty;
+				Assert.Equal(kvp.Value, meta, compareOnlyMetadata);
 			}
 
 			// 3. Iterate through the metadatas, find the appropriate handles.
-			// 3a. naively calculate the expected handles. one for each metadata, some by hash, some by streamname
+			// 3a. naively calculate the expected handles. one for each metadata, some by hash,
+			// some by streamname
 			var expectedHandles = expectedMetadataPerStream
 				.Select(kvp => {
 					var stream = kvp.Key;
@@ -310,16 +314,43 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 						? (StreamHandle.ForStreamId(stream), metadata)
 						: (StreamHandle.ForHash<string>(hasher.Hash(stream)), metadata);
 				})
-				.Select(x => x.ToString())
-				.OrderBy(x => x);
+				.Select(x => (x.Item1.ToString(), x.metadata))
+				.OrderBy(x => x.Item1);
 
 			// 3b. compare to the actual handles.
 			var actual = scavengeState
 				.MetastreamDatas
-				.Select(x => x.ToString())
-				.OrderBy(x => x);
+				.Select(x => (x.Item1.ToString(), x.Item2))
+				.OrderBy(x => x.Item1);
 
-			Assert.Equal(expectedHandles, actual);
+			// compare the handles
+			Assert.Equal(expectedHandles.Select(x => x.Item1), actual.Select(x => x.Item1));
+
+			// compare the metadatas
+			Assert.Equal(
+				expectedHandles.Select(x => x.metadata),
+				actual.Select(x => x.Item2),
+				compareOnlyMetadata);
+		}
+
+		class CompareOnlyMetadata : IEqualityComparer<MetastreamData> {
+			public bool Equals(MetastreamData x, MetastreamData y) {
+				if ((x == null) != (y == null))
+					return false;
+
+				if (x is null)
+					return true;
+
+				return
+					x.MaxCount == y.MaxCount &&
+					x.MaxAge == y.MaxAge &&
+					x.TruncateBefore == y.TruncateBefore;
+
+			}
+
+			public int GetHashCode([DisallowNull] MetastreamData obj) {
+				throw new NotImplementedException();
+			}
 		}
 	}
 }

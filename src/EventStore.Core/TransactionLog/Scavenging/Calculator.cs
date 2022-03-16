@@ -6,10 +6,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Calculator<TStreamId> : ICalculator<TStreamId> {
 		private readonly IIndexReaderForCalculator<TStreamId> _index;
 
-		//qqqqq extract this in-memory datastructure to be pluggable
-		private readonly Dictionary<int, IChunkScavengeInstructions<TStreamId>> _instructionsByChunk =
-			new();
-
 		public Calculator(IIndexReaderForCalculator<TStreamId> index) {
 			_index = index;
 		}
@@ -38,9 +34,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				//qq if the scavengemap supports RMW that might have a bearing too, but for now maybe
 				// this is just overcomplicating things.
 				//qq how bad is this, how much could we save
-				var originalDiscardPoint = scavengeState.GetOriginalStreamData(originalStreamHandle);
+				if (!scavengeState.TryGetOriginalStreamData(
+						originalStreamHandle,
+						out var originalDiscardPoint)) {
+					originalDiscardPoint = DiscardPoint.KeepAll;
+				}
 
 				var adjustedDiscardPoint = CalculateDiscardPointForStream(
+					scavengeState,
 					originalStreamHandle,
 					originalDiscardPoint,
 					metastreamData,
@@ -97,13 +98,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			StreamHandle<TStreamId> metastreamHandle,
 			ulong originalStreamHash) {
 
-			throw new NotImplementedException();
+			//qqqqqqqqqqqqqq needs to check for collision and use the ForStreamName if necessary
+			return StreamHandle.ForHash<TStreamId>(originalStreamHash);
 		}
 
 		// streamHandle: handle to the original stream
 		// discardPoint: the discard point previously set by the accumulator
 		// metadata: metadata of the original stream (stored in the metadata stream)
 		private DiscardPoint CalculateDiscardPointForStream(
+			IScavengeStateForCalculator<TStreamId> scavengeState,
 			StreamHandle<TStreamId> streamHandle,
 			DiscardPoint discardPoint,
 			MetastreamData metadata,
@@ -135,9 +138,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// this method calculates the FinalDiscardPoint
 
 			//qq the stream really should exist but consider what will happen here if it doesn't
+			//qqqqqqq erm, why should it exist, what if it just doesn't, or doesn't before the 
+			// scavenge point.
+			//  if it doesn't exist at all then presumably there is nothing to scavenge
+			//    we can set the disard point to anything
+			//  if it doesn't exist before the scavenge point but does later then
+			//    there is nothing to remove as part of this scavenge, but we need to be careful
+			//    not to remove the later events.
 			var lastEventNumber = _index.GetLastEventNumber(
 				streamHandle,
-				scavengePoint.Position);
+				scavengePoint);
 
 			var logPositionCutoff = 0L;
 
@@ -193,7 +203,12 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			var fromEventNumber = 0L; //qq maybe from the previous scavenge point
 			while (true) {
 				//qq limit the read to the scavengepoint too?
-				var slice = _index.ReadEventInfoForward(streamHandle, fromEventNumber, maxCount);
+				var slice = _index.ReadEventInfoForward(
+					streamHandle,
+					fromEventNumber,
+					maxCount,
+					scavengePoint);
+
 				//qq naive, we dont need to check every event, we could check the last one
 				// and if that is to be discarded then we can discard everything in this slice.
 				foreach (var eventInfo in slice) {
@@ -211,7 +226,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 					// always keep the last event in the stream.
 					if (discard) {
-						Discard(eventInfo.LogPosition);
+						Discard(scavengeState, eventInfo.LogPosition);
 					} else {
 						// found the first one to keep. we are done discarding.
 						return DiscardPoint.DiscardBefore(eventInfo.EventNumber);
@@ -294,15 +309,17 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		// figure out which chunk it is for and note it down
 		//qq chunk instructions are per logical chunk (for now)
-		private void Discard(long logPosition) {
+		private void Discard(
+			IScavengeStateForCalculator<TStreamId> scavengeState,
+			long logPosition) {
+
 			var chunkNumber = (int)(logPosition / TFConsts.ChunkSize);
 
-			if (!_instructionsByChunk.TryGetValue(chunkNumber, out var chunkInstructions)) {
-				chunkInstructions = new InMemoryChunkScavengeInstructions<TStreamId>();
-				_instructionsByChunk[chunkNumber] = chunkInstructions;
-			}
-
-			chunkInstructions.Discard();
+			//qq dont go lookin it up every time, hold on to one set of chunkinstructions until we
+			// have made it to the next chunk.
+			if (!scavengeState.TryGetHeuristic(chunkNumber, out var heuristic))
+				heuristic = 0;
+			scavengeState.SetHeuristic(chunkNumber, heuristic++);
 		}
 	}
 }
