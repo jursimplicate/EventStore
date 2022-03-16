@@ -1188,7 +1188,8 @@ namespace EventStore.Core {
 					new ChunkManagerForScavenge(), //qq mock
 					logFormat.ChunkReaderForScavenge);
 
-				var indexExecutor = new IndexExecutor<TStreamId>();
+				var indexExecutor = new IndexExecutor<TStreamId>(
+					new StuffForIndexExecutor());
 
 				var scavengeState = new ScavengeState<TStreamId>(
 					logFormat.LongHasher,

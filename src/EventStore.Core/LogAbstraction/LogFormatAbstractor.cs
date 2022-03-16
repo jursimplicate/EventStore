@@ -256,7 +256,7 @@ namespace EventStore.Core.LogAbstraction {
 			IExistenceFilterReader<TStreamId> streamExistenceFilterReader,
 			IRecordFactory<TStreamId> recordFactory,
 			IChunkReaderForAccumulator<TStreamId> chunkReaderForAccumulation,
-			IChunkReaderForScavenge<TStreamId> chunkReaderForScavenge,
+			IChunkReaderForChunkExecutor<TStreamId> chunkReaderForScavenge,
 			bool supportsExplicitTransactions,
 			Func<ITransactionFileReader,ITransactionFileWriter,IPartitionManager> partitionManagerFactory) {
 			
@@ -308,7 +308,7 @@ namespace EventStore.Core.LogAbstraction {
 		public IExistenceFilterReader<TStreamId> StreamExistenceFilterReader { get; }
 		public IRecordFactory<TStreamId> RecordFactory { get; }
 		public IChunkReaderForAccumulator<TStreamId> ChunkReaderForAccumulation { get; }
-		public IChunkReaderForScavenge<TStreamId> ChunkReaderForScavenge { get; }
+		public IChunkReaderForChunkExecutor<TStreamId> ChunkReaderForScavenge { get; }
 
 		public INameLookup<TStreamId> StreamNames => StreamNamesProvider.StreamNames;
 		public INameLookup<TStreamId> EventTypes => StreamNamesProvider.EventTypes;

@@ -82,7 +82,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	}
 
 	//qq implement
-	public class ChunkReaderForScavenge : IChunkReaderForScavenge<string> {
+	public class ChunkReaderForScavenge : IChunkReaderForChunkExecutor<string> {
 		public IEnumerable<RecordForScavenge<string>> Read(TFChunk chunk) {
 			yield return new() {
 				StreamId = "thestream",
@@ -92,7 +92,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	}
 
 	//qq implement
-	public class ChunkManagerForScavenge : IChunkManagerForScavenge {
+	public class ChunkManagerForScavenge : IChunkManagerForChunkExecutor {
 		public TFChunk GetChunk(int logicalChunkNum) {
 			throw new NotImplementedException();
 		}
@@ -102,7 +102,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 	}
 
-	public class ChunkBulkReaderForScavenge<TStreamId> : IChunkReaderForScavenge<TStreamId> {
+	public class ChunkBulkReaderForScavenge<TStreamId> : IChunkReaderForChunkExecutor<TStreamId> {
 		public IEnumerable<RecordForScavenge<TStreamId>> Read(TFChunk chunk) {
 			throw new NotImplementedException();
 			//using var reader = chunk.AcquireReader();
@@ -111,5 +111,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			//yield return new RecordForScavenge(); //qq
 		}
+	}
+
+	//qq
+	public class StuffForIndexExecutor : IDoStuffForIndexExecutor {
 	}
 }

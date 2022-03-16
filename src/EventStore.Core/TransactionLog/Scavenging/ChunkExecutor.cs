@@ -1,10 +1,10 @@
 ﻿namespace EventStore.Core.TransactionLog.Scavenging {
 	public class ChunkExecutor<TStreamId> : IChunkExecutor<TStreamId> {
-		private readonly IChunkManagerForScavenge _chunkManager;
-		private readonly IChunkReaderForScavenge<TStreamId> _chunkReader;
+		private readonly IChunkManagerForChunkExecutor _chunkManager;
+		private readonly IChunkReaderForChunkExecutor<TStreamId> _chunkReader;
 		public ChunkExecutor(
-			IChunkManagerForScavenge chunkManager,
-			IChunkReaderForScavenge<TStreamId> chunkReader) {
+			IChunkManagerForChunkExecutor chunkManager,
+			IChunkReaderForChunkExecutor<TStreamId> chunkReader) {
 
 			_chunkManager = chunkManager;
 			_chunkReader = chunkReader;

@@ -98,14 +98,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		ScavengePoint GetScavengePoint();
 	}
 
-	public interface IChunkManagerForScavenge {
+	public interface IChunkManagerForChunkExecutor {
 		TFChunk SwitchChunk(TFChunk chunk, bool verifyHash, bool removeChunksWithGreaterNumbers);
 		TFChunk GetChunk(int logicalChunkNum);
 	}
 
-	//qq there are a couple of places we need to read chunks.
-	// 1. during accumulation we need the metadata records and the timestamp of the first record in the
-	//    chunk. i wonder if we should use the bulk reader.
 	//qq note dont use allreader to implement this, it has logic to deal with transactions, skips
 	// epochs etc.
 	public interface IChunkReaderForAccumulator<TStreamId> {
@@ -120,6 +117,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//qq prolly have readonly interfaces to implement, perhaps a method to return them for reuse
 		//qq some of these are pretty similar, wil lthey end up being different in the end
 		public class EventRecord : RecordForAccumulator<TStreamId> {
+			public EventRecord() {}
 			public TStreamId StreamId { get; set; }
 			public long LogPosition { get; set; }
 		}
@@ -127,6 +125,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//qq how do we tell its a tombstone record, detect and abort if the tombstone is in a transaction
 		// if thats even possible
 		public class TombStoneRecord : RecordForAccumulator<TStreamId> {
+			public TombStoneRecord() {}
 			public TStreamId StreamId { get; set; }
 			public long LogPosition { get; set; }
 		}
@@ -134,18 +133,21 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		//qq make sure we only instantiate these for metadata records in metadata streams
 		// or maybe rather check that this is the case in the Accumulator
 		public class MetadataRecord : RecordForAccumulator<TStreamId> {
+			public MetadataRecord() {}
 			public TStreamId StreamId { get; set; }
 			public long LogPosition { get; set; }
 			public long EventNumber { get; set; }
 		}
 	}
 
-	// 2. during calculation we want to know the record sizes to determine space saving.
-	//      unless we just skip this and approximate it with a record count.
-	// 3. when scavenging a chunk we need to read records out of it any copy
-	//    the ones we are keeping into the new chunk
-	public interface IChunkReaderForScavenge<TStreamId> {
+	//qq name
+	public interface IChunkReaderForChunkExecutor<TStreamId> {
 		IEnumerable<RecordForScavenge<TStreamId>> Read(TFChunk chunk);
+	}
+
+	//qq name
+	public interface IDoStuffForIndexExecutor {
+		//qq
 	}
 
 	// when scavenging we dont need all the data for a record
@@ -203,6 +205,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		void Discard();
 	}
 
+	//qq name
 	public interface IIndexReaderForAccumulator<TStreamId> {
 		//qq definitely a similar here to the delegate defined by the collision detector..
 		// is it actually the same thing in need of a refactor? then the other is just a
@@ -216,8 +219,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public readonly long LogPosition;
 		public readonly long EventNumber;
 	}
+
 	//qq name
-	public interface IIndexForScavenge<TStreamId> {
+	public interface IIndexReaderForCalculator<TStreamId> {
 		//qq maxposition  / positionlimit instead of scavengepoint?
 		//qq better name than 'stream'...
 		long GetLastEventNumber(StreamHandle<TStreamId> stream, long scavengePoint);
@@ -358,6 +362,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// see what old scavenge does with those and what we should do with them
 
 	//qqqq TRANSACTIONS. these look ok
+	// - is it possible that an uncommitted transaction could have a hash collision in
+	// a way that we wouldn't detect but would be important? nah, because there is no such thing as a
+	// collision except in the index. but we should have a tests that makes sure its ok when we have
+	// uncommitted transactions that "collide"
 	// - We don't need to support Metadata or Tombstones committed in transactions.
 	//    we will detect it and abort with an error. //qq but do detect it and test this
 	// So we are only concerned with prepares in transactions.
@@ -450,6 +458,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//   user but the effect on the log will be different so may not be able to use exactly the same
 	//   tests (e.g. we will drop in scavenge points, might not scavenge the same things exactly that
 	//   are done on a best effort basis like commit records)
+	// - once we have an idea or two from v20, port the code over to v5.
 	// - port the ScavengeState tests over to the higher level tests
 	// - pass through the doc in case there are more things to think about
 	// - diagram out the components so we can get the big picture
@@ -499,6 +508,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 
 	public record ScavengePoint {
+		//qq do we want these to be explicit, or implied from the position/timestamp
+		// of the scavenge point itself? questions is whether there is any need to scavenge
+		// at a different time or place.
+
 		public long Position { get; set; }
 		public DateTime EffectiveNow { get; set; }
 	}

@@ -4,13 +4,13 @@ using EventStore.Core.TransactionLog.Chunks;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Calculator<TStreamId> : ICalculator<TStreamId> {
-		private readonly IIndexForScavenge<TStreamId> _index;
+		private readonly IIndexReaderForCalculator<TStreamId> _index;
 
 		//qqqqq extract this in-memory datastructure to be pluggable
 		private readonly Dictionary<int, IChunkScavengeInstructions<TStreamId>> _instructionsByChunk =
 			new();
 
-		public Calculator(IIndexForScavenge<TStreamId> index) {
+		public Calculator(IIndexReaderForCalculator<TStreamId> index) {
 			_index = index;
 		}
 

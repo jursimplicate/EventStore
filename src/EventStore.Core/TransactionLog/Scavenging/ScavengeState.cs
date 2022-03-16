@@ -30,6 +30,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			IScavengeMap<TStreamId, MetastreamData> metaCollisionStorage,
 			IScavengeMap<ulong, DiscardPoint> originalStorage,
 			IScavengeMap<TStreamId, DiscardPoint> originalCollisionStorage,
+			//qq odd to pass something that is 'foraccumulator' in here
 			IIndexReaderForAccumulator<TStreamId> indexReaderForAccumulator) {
 
 			//qq inject this so that in log v3 we can have a trivial implementation

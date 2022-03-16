@@ -2,6 +2,9 @@
 
 namespace EventStore.Core.TransactionLog.Scavenging {
 	public class IndexExecutor<TStreamId> : IIndexExecutor<TStreamId> {
+		public IndexExecutor(IDoStuffForIndexExecutor stuff) {
+
+		}
 
 		public void Execute(IScavengeStateForIndexExecutor<TStreamId> instructions) {
 			//qq fill this in, scavenge the ptables

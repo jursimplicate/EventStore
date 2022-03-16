@@ -4,7 +4,7 @@ using EventStore.Core.Services.Storage.ReaderIndex;
 namespace EventStore.Core.TransactionLog.Scavenging {
 	//qq for now lets keep this really simple and just use index reader.
 	//add support for the scavenge point limiting later.
-	public class IndexForScavenge<TStreamId> : IIndexForScavenge<TStreamId> {
+	public class IndexForScavenge<TStreamId> : IIndexReaderForCalculator<TStreamId> {
 		private readonly IReadIndex<TStreamId> _readIndex;
 
 		public IndexForScavenge(IReadIndex<TStreamId> readIndex) {
