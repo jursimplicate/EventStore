@@ -490,6 +490,8 @@ namespace EventStore.Core.Index {
 		}
 
 		public IEnumerable<IndexEntry> IterateAllInOrder() {
+			//qq might be nice if we got a workitem that was optimised for sequential reads
+			// bigger buffer too perhaps
 			var workItem = GetWorkItem();
 			try {
 				workItem.Stream.Position = PTableHeader.Size;

@@ -243,18 +243,54 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 					return new IndexReadStreamResult(fromEventNumber, maxCount, IndexReadStreamResult.EmptyRecords,
 						metadata, minEventNumber, lastEventNumber, isEndOfStream: false);
 				startEventNumber = Math.Max(startEventNumber, minEventNumber);
+
+
+
+				//qq say we are reading forward from the start, but it has millions of expired events in,
+				// and we want to read the stream forwards from event 0
+				// then the default path would apaprently take a long time to get to any non-expired events
+				// and in the mean time the request would time out.
+				// so we hvae this optimisation path that does some chopping.
+				//qq what are the arguments when we get here?? looks like the client is just saying ReadStream forwards from the start, max 1 event.
+				// the grpc handling in the server will issue reads until we fill the max or run out of stream.
+				// not we dont use the tableindex.getrange limit here, just start and end so start will be 0, and end will be 0,
+				// this is a bit lame if true.
+				//
+				//qqq what logic does the standard path contain that we need to implement
+				//  - hash collision resolution (tick)
+				//  - record not existing (tick)
+				//   - skipindexcanonread
+				//
+				//qq this used to just be an extra whereclause that checked the timestamp.
 				if (metadata.MaxAge.HasValue) {
 					return ForStreamWithMaxAge(streamId, streamName,
 						fromEventNumber, maxCount,
 						startEventNumber, endEventNumber, lastEventNumber,
 						metadata.MaxAge.Value, metadata, _tableIndex, reader, _eventTypes);
 				}
+
+
 				var recordsQuery = _tableIndex.GetRange(streamId, startEventNumber, endEventNumber)
 					.Select(x => new { x.Version, Prepare = ReadPrepareInternal(reader, x.Position) })
 					.Where(x => x.Prepare != null && StreamIdComparer.Equals(x.Prepare.EventStreamId, streamId));
 				if (!skipIndexScanOnRead) {
-					recordsQuery = recordsQuery.OrderByDescending(x => x.Version)
-						.GroupBy(x => x.Version).Select(x => x.Last());
+					recordsQuery = recordsQuery
+						//qq what is this doing exactly
+						// it is not resolving hash collisions, they are dealt with in the 'where' just above.
+						// this deals with the case that one stream has two events that have the same version.
+						// we take the 'last' one in each case, which is the... older or newer?
+
+						// the contents of the query are already in an order, see table index GetRangeInternal
+						//qq well, because it isn't already in order of version descending, which is because the fact that is is 32/64bit hash leaked out to here somehow
+						// but this is supposedly only a problem for the duplicate event problem. 
+						//qq why is that? it's because the 64bit hash is always bigger than the 32 bit hashes
+
+						//qq is there a chance that sometimes we get one event and sometimes we get the other, depending on what we were reading?
+						// no, because there is no range limit
+						// but if there was a limit
+						.OrderByDescending(x => x.Version)
+						.GroupBy(x => x.Version)
+						.Select(x => x.Last());
 				}
 				
 				var records = recordsQuery.Reverse().Select(x => CreateEventRecord(x.Version, x.Prepare, streamName)).ToArray();
@@ -267,11 +303,26 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 					nextEventNumber, lastEventNumber, isEndOfStream);
 			}
 
+
+
+
+
+
+
+
 			static IndexReadStreamResult ForStreamWithMaxAge(TStreamId streamId,
 				string streamName,
-				long fromEventNumber, int maxCount, long startEventNumber,
-				long endEventNumber, long lastEventNumber, TimeSpan maxAge, StreamMetadata metadata,
-				ITableIndex<TStreamId> tableIndex, TFReaderLease reader, INameLookup<TStreamId> eventTypes) {
+				long fromEventNumber, //q from the client i think
+				int maxCount, //q from the client i think
+				long startEventNumber, //q calculated
+				long endEventNumber, //q calculated: start + max - 1
+				long lastEventNumber, //q from index
+				TimeSpan maxAge,
+				StreamMetadata metadata,
+				ITableIndex<TStreamId> tableIndex,
+				TFReaderLease reader,
+				INameLookup<TStreamId> eventTypes) {
+
 				if (startEventNumber > lastEventNumber) {
 					return new IndexReadStreamResult(fromEventNumber, maxCount, IndexReadStreamResult.EmptyRecords,
 						metadata, lastEventNumber + 1, lastEventNumber, isEndOfStream: true);
@@ -285,9 +336,13 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 				//involve an additional set of reads for no good reason
 				while (indexEntries.Count == 0) {
 					// this will generally only iterate once, unless a scavenge completes exactly now, in which case it might iterate twice
+					//qqqqqqqq is this guaranteed to terminate? yes because if we manage to get the 'oldest' entry first, then we will definitely
+					// get it in the getrange call (subject to scavenge completing)
 					if (tableIndex.TryGetOldestEntry(streamId, out var oldest)) {
 						startEventNumber = oldest.Version;
 						endEventNumber = startEventNumber + maxCount - 1;
+						//qq limit!!!! but it looks like there is no need for this
+						//qq is this wrong when there are collisions? yes
 						indexEntries = tableIndex.GetRange(streamId, startEventNumber, endEventNumber, maxCount);
 					} else {
 						//scavenge completed and deleted our stream? return empty set and get the client to try again?
@@ -300,6 +355,7 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 				for (int i = 0; i < indexEntries.Count; i++) {
 					var prepare = ReadPrepareInternal(reader, indexEntries[i].Position);
 
+					//qq ugly but correct
 					//LOGV2
 					if (typeof(TStreamId) == typeof(string) &&
 					    (prepare == null || !StreamIdComparer.Equals(prepare.EventStreamId, streamId))) {
@@ -346,7 +402,11 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 				var high = latest.Version;
 				while (low <= high) {
 					var mid = low + ((high - low) / 2);
-					indexEntries = tableIndex.GetRange(streamId, mid, mid + maxCount, maxCount);
+					//qq limit.. dont pass this in. also this is wrong when there are collisions??
+					//qq say that maxcount is 10, but there are collisions then because of the limit we wont get all the collisions
+					// then some events will be missing from the result, and it could be events nearer the beginning
+					// so say we request
+					indexEntries = tableIndex.GetRange(streamId: streamId, startVersion: mid, endVersion: mid + maxCount, limit: maxCount);
 					if (indexEntries.Count > 0) {
 						nextEventNumber = indexEntries[0].Version + 1;
 					}
@@ -369,8 +429,8 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 						var prepare = ReadPrepareInternal(reader, indexEntries[i].Position);
 						
 						//LOGV2
-						if (typeof(TStreamId) == typeof(string) &&
-						    (prepare == null || !StreamIdComparer.Equals(prepare.EventStreamId, streamId))) {
+						if (typeof(TStreamId) == typeof(string) && //q :/
+							(prepare == null || !StreamIdComparer.Equals(prepare.EventStreamId, streamId))) {
 							continue;
 						}
 						if (prepare?.TimeStamp >= ageThreshold) {
@@ -408,7 +468,7 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 				static IPrepareLogRecord<TStreamId> LowPrepare(TFReaderLease tfReaderLease,
 					IReadOnlyList<IndexEntry> entries, TStreamId streamId) {
 					
-					if (typeof(TStreamId) == typeof(string)) {
+					if (typeof(TStreamId) == typeof(string)) { //q :/
 						for (int i = entries.Count - 1; i >= 0; i--) {
 							var prepare = ReadPrepareInternal(tfReaderLease, entries[i].Position);
 							if (prepare != null && StreamIdComparer.Equals(prepare.EventStreamId, streamId))
@@ -428,7 +488,7 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 				static IPrepareLogRecord<TStreamId> HighPrepare(TFReaderLease tfReaderLease,
 					IReadOnlyList<IndexEntry> entries, TStreamId streamId) {
 					
-					if (typeof(TStreamId) == typeof(string)) {
+					if (typeof(TStreamId) == typeof(string)) {//q :/
 						for (int i = 0; i < entries.Count; i++) {
 							var prepare = ReadPrepareInternal(tfReaderLease, entries[i].Position);
 							if (prepare != null && StreamIdComparer.Equals(prepare.EventStreamId, streamId))
@@ -445,6 +505,24 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 				}
 			}
 		}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 		IndexReadStreamResult IIndexReader<TStreamId>.
 			ReadStreamEventsBackward(string streamName, TStreamId streamId, long fromEventNumber, int maxCount) {
@@ -584,10 +662,12 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 			if (!_streamExistenceFilter.MightContain(streamId))
 				return ExpectedVersion.NoStream;
 
+			// get the latest entry in the table index for any stream that hashes the same as ours.
 			IndexEntry latestEntry;
 			if (!_tableIndex.TryGetLatestEntry(streamId, out latestEntry))
 				return ExpectedVersion.NoStream;
 
+			// got the latest entry for some stream. look up the prepare to see if it is ours.
 			var rec = ReadPrepareInternal(reader, latestEntry.Position);
 			if (rec == null)
 				throw new Exception(
@@ -597,12 +677,33 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 			long startVersion = 0;
 			long latestVersion = long.MinValue;
 			if (StreamIdComparer.Equals(rec.EventStreamId, streamId)) {
+				// yay the latestentry is for our stream.
+				// this looked back through the ptables one a a time until it found an entry for our stream.
+				// BUT this might be the duplicate event of version zero!!
+				// SO we are still going to want to do a range read, in case some of the _earlier ptables_ contain higher version numbers.
+				// WHY do we even bother with the getlatestentry? check if it is saving us anything over just going straight to the range
+				//   yes is it, because it allows us to set a lower bound on the range that is likely quite good, so although we do end up checking every file, we dont read 100 events through each one.
+				// read from long.max down to the version above the candidate we found (unless what we found is already the max.. i mean we should really early return here.
 				startVersion = Math.Max(latestEntry.Version, latestEntry.Version + 1);
 				latestVersion = latestEntry.Version;
 			}
 
-			foreach (var indexEntry in _tableIndex.GetRange(streamId, startVersion, long.MaxValue,
+			//qq we have got a latestentry from the tableindex.
+			// if it is for our stream why aren't we done?
+			// we used to:
+			//   1. just get the latest entry, if its our stream then done,
+			//   2. otherwise read a range from intmax towards 0 but limited to the hashcollosion limit + 1
+			//      return on the first one that is for our stream.
+			// but now we:
+			//   1 ...
+			// read from the ptables to
+			foreach (var indexEntry in _tableIndex.GetRange(
+				streamId: streamId,
+				startVersion: startVersion,
+				endVersion: long.MaxValue,
+				// the limit is important here because start/end can be intentionally far apart
 				limit: _hashCollisionReadLimit + 1)) {
+
 				var r = ReadPrepareInternal(reader, indexEntry.Position);
 				if (r != null && StreamIdComparer.Equals(r.EventStreamId, streamId)) {
 					if (latestVersion == long.MinValue) {
@@ -610,6 +711,7 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 						continue;
 					}
 
+					// return the maximum of latestversion and indexentry.version
 					return latestVersion < indexEntry.Version ? indexEntry.Version : latestVersion;
 				}
 
@@ -674,17 +776,8 @@ namespace EventStore.Core.Services.Storage.ReaderIndex {
 			if (prepare.Data.Length == 0 || prepare.Flags.HasNoneOf(PrepareFlags.IsJson))
 				return StreamMetadata.Empty;
 
-			try {
-				var metadata = StreamMetadata.FromJsonBytes(prepare.Data);
-				if (prepare.Version == LogRecordVersion.LogRecordV0 && metadata.TruncateBefore == int.MaxValue) {
-					metadata = new StreamMetadata(metadata.MaxCount, metadata.MaxAge, EventNumber.DeletedStream,
-						metadata.TempStream, metadata.CacheControl, metadata.Acl);
-				}
-
-				return metadata;
-			} catch (Exception) {
-				return StreamMetadata.Empty;
-			}
+			var metadata = StreamMetadata.TryFromJsonBytes(prepare);
+			return metadata;
 		}
 
 		private EventRecord CreateEventRecord(long version, IPrepareLogRecord<TStreamId> prepare, string streamName) {

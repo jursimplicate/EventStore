@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using EventStore.Common.Utils;
 using EventStore.Core.Services;
+using EventStore.Core.TransactionLog.LogRecords;
+using EventStore.LogCommon;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -48,6 +50,31 @@ namespace EventStore.Core.Data {
 			return string.Format(
 				"MaxCount: {0}, MaxAge: {1}, TruncateBefore: {2}, TempStream: {3}, CacheControl: {4}, Acl: {5}",
 				MaxCount, MaxAge, TruncateBefore, TempStream, CacheControl, Acl);
+		}
+
+		//qq consider name
+		public static StreamMetadata TryFromJsonBytes(IPrepareLogRecord prepare) {
+			try {
+				var metadata = FromJsonBytes(prepare.Data);
+				// upgrade the metadata from v0 if necessary
+				if (prepare.Version == LogRecordVersion.LogRecordV0 && metadata.TruncateBefore == int.MaxValue) {
+					metadata = new StreamMetadata(
+						maxCount: metadata.MaxCount,
+						maxAge: metadata.MaxAge,
+						truncateBefore: EventNumber.DeletedStream,
+						tempStream: metadata.TempStream,
+						cacheControl: metadata.CacheControl,
+						acl: metadata.Acl);
+				}
+
+				return metadata;
+			} catch (Exception) {
+				// this can happen if the json is malformed, or if any of the things that we expect to be longs are better than longs
+				// which can happen if you try to set something to long.maxvalue in the webui because javascript translates
+				// it into a number that is bigger than long.max
+				//qq better log something
+				return Empty;
+			}
 		}
 
 		public static StreamMetadata FromJsonBytes(ReadOnlyMemory<byte> json) {

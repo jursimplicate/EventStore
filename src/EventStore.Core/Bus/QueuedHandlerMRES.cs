@@ -140,9 +140,11 @@ namespace EventStore.Core.Bus {
 					} catch (Exception ex) {
 						Log.Error(ex, "Error while processing message {message} in queued handler '{queue}'.",
 							msg, Name);
-#if DEBUG
-						throw;
-#endif
+//qq
+//#if DEBUG
+//						Log.Fatal("Rethrowing exception because we are in DEBUG");
+//						throw;
+//#endif
 					}
 				}
 			} catch (Exception ex) {

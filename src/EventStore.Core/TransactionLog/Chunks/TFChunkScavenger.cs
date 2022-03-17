@@ -530,29 +530,35 @@ namespace EventStore.Core.TransactionLog.Chunks {
 			CommitInfo commitInfo;
 			if (!commits.TryGetValue(commit.TransactionPosition, out commitInfo)) {
 				// This should never happen given that we populate `commits` from the commit records.
+				// ^ not true, the `commits` are only commit records for transactions that opened in this chunk.
 				return true;
 			}
 
 			return commitInfo.KeepCommit != false;
 		}
 
-		private bool ShouldKeepPrepare(IPrepareLogRecord<TStreamId> prepare, Dictionary<long, CommitInfo> commits, long chunkStart,
+		private bool ShouldKeepPrepare(
+			IPrepareLogRecord<TStreamId> prepare,
+			Dictionary<long, CommitInfo> commits,
+			long chunkStart,
 			long chunkEnd) {
+
 			CommitInfo commitInfo;
 			bool hasSeenCommit = commits.TryGetValue(prepare.TransactionPosition, out commitInfo);
 			bool isCommitted = hasSeenCommit || prepare.Flags.HasAnyOf(PrepareFlags.IsCommitted);
 
 			if (prepare.Flags.HasAnyOf(PrepareFlags.StreamDelete)) {
+				// this is the tombstone of a hard deleted stream.
 				if (_unsafeIgnoreHardDeletes) {
 					Log.Information(
 						"Removing hard deleted stream tombstone for stream {stream} at position {transactionPosition}",
 						prepare.EventStreamId, prepare.TransactionPosition);
 					commitInfo.TryNotToKeep();
+					return false;
 				} else {
 					commitInfo.ForciblyKeep();
+					return true;
 				}
-
-				return !_unsafeIgnoreHardDeletes;
 			}
 
 			if (!isCommitted && prepare.Flags.HasAnyOf(PrepareFlags.TransactionBegin)) {
@@ -568,6 +574,7 @@ namespace EventStore.Core.TransactionLog.Chunks {
 
 			var lastEventNumber = _readIndex.GetStreamLastEventNumber(prepare.EventStreamId);
 			if (lastEventNumber == EventNumber.DeletedStream) {
+				// The stream is hard deleted but this is not the tombstone.
 				// When all prepares and commit of transaction belong to single chunk and the stream is deleted,
 				// we can safely delete both prepares and commit.
 				// Even if this prepare is not committed, but its stream is deleted, then as long as it is
@@ -606,7 +613,7 @@ namespace EventStore.Core.TransactionLog.Chunks {
 				? prepare.ExpectedVersion + 1 // IsCommitted prepares always have explicit expected version
 				: commitInfo.EventNumber + prepare.TransactionOffset;
 
-			if (!KeepOnlyFirstEventOfDuplicate(_tableIndex, prepare, eventNumber)) {
+			if (DiscardBecauseDuplicate(prepare, eventNumber)) {
 				commitInfo.TryNotToKeep();
 				return false;
 			}
@@ -626,19 +633,25 @@ namespace EventStore.Core.TransactionLog.Chunks {
 			                 || (meta.TruncateBefore.HasValue && eventNumber < meta.TruncateBefore.Value)
 			                 || (meta.MaxAge.HasValue && prepare.TimeStamp < DateTime.UtcNow - meta.MaxAge.Value);
 
-			if (canRemove)
+			if (canRemove) {
 				commitInfo.TryNotToKeep();
-			else
+				return false;
+			} else {
 				commitInfo.ForciblyKeep();
-			return !canRemove;
+				return true;
+			}
 		}
 
-		private bool KeepOnlyFirstEventOfDuplicate(ITableIndex tableIndex, IPrepareLogRecord<TStreamId> prepare, long eventNumber) {
+		private bool DiscardBecauseDuplicate(IPrepareLogRecord<TStreamId> prepare, long eventNumber) {
 			var result = _readIndex.ReadEvent(IndexReader.UnspecifiedStreamName, prepare.EventStreamId, eventNumber);
-			if (result.Result == ReadEventResult.Success && result.Record.LogPosition != prepare.LogPosition)
-				return false;
 
-			return true;
+			if (result.Result == ReadEventResult.Success && result.Record.LogPosition != prepare.LogPosition) {
+				// prepare isn't the record we get for an index read at its own stream/version.
+				// therefore it is a duplicate that cannot be read from the index, discard it.
+				return true;
+			}
+
+			return false;
 		}
 
 		private bool IsSoftDeletedTempStreamWithinSameChunk(TStreamId eventStreamId, long chunkStart, long chunkEnd) {

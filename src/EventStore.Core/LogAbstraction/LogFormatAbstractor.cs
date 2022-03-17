@@ -9,6 +9,7 @@ using EventStore.Core.Settings;
 using EventStore.Core.TransactionLog;
 using EventStore.Core.TransactionLog.Checkpoint;
 using EventStore.Core.TransactionLog.LogRecords;
+using EventStore.Core.TransactionLog.Scavenging;
 using LogV3StreamId = System.UInt32;
 
 namespace EventStore.Core.LogAbstraction {
@@ -39,10 +40,11 @@ namespace EventStore.Core.LogAbstraction {
 			var streamExistenceFilter = GenStreamExistenceFilter(options, longHasher);
 			var streamNameIndex = new LogV2StreamNameIndex(streamExistenceFilter);
 			var eventTypeIndex = new LogV2EventTypeIndex();
-			
+
 			return new LogFormatAbstractor<string>(
 				lowHasher: lowHasher,
 				highHasher: highHasher,
+				longHasher : longHasher,
 				streamNameIndex: streamNameIndex,
 				streamNameIndexConfirmer: streamNameIndex,
 				eventTypeIndex: eventTypeIndex,
@@ -58,7 +60,9 @@ namespace EventStore.Core.LogAbstraction {
 				streamExistenceFilterReader: streamExistenceFilter,
 				recordFactory: new LogV2RecordFactory(),
 				supportsExplicitTransactions: true,
-				partitionManagerFactory: (r, w) => new LogV2PartitionManager());
+				chunkReaderForAccumulation: new ChunkReaderForAccumulator<string>(),
+				chunkReaderForScavenge: new ChunkReaderForScavenge(), //qq real impl
+				partitionManagerFactory: (r, w) => new LogV2PartitionManager()); ;
 		}
 
 		private static INameExistenceFilter GenStreamExistenceFilter(
@@ -114,10 +118,11 @@ namespace EventStore.Core.LogAbstraction {
 
 			var eventTypeIndexPersistence = GenEventTypeIndexPersistence(options);
 			var eventTypeIndex = GenEventTypeIndex(eventTypeIndexPersistence);
-			
+
 			var abstractor = new LogFormatAbstractor<LogV3StreamId>(
 				lowHasher: new IdentityLowHasher(),
 				highHasher: new IdentityHighHasher(),
+				longHasher: new IdentityLongHasher(),
 				streamNameIndex: new StreamNameIndexMetastreamDecorator(streamNameIndex, metastreams),
 				streamNameIndexConfirmer: streamNameIndex,
 				eventTypeIndex: new EventTypeIndexSystemTypesDecorator(eventTypeIndex),
@@ -136,6 +141,8 @@ namespace EventStore.Core.LogAbstraction {
 				streamExistenceFilterReader: new NoExistenceFilterReader(),
 				recordFactory: recordFactory,
 				supportsExplicitTransactions: false,
+				chunkReaderForAccumulation: null, //qq
+				chunkReaderForScavenge: null, //qq
 				partitionManagerFactory: (r, w) => new PartitionManager(r, w, recordFactory));
 			return abstractor;
 		}
@@ -233,6 +240,7 @@ namespace EventStore.Core.LogAbstraction {
 		public LogFormatAbstractor(
 			IHasher<TStreamId> lowHasher,
 			IHasher<TStreamId> highHasher,
+			ILongHasher<TStreamId> longHasher,
 			INameIndex<TStreamId> streamNameIndex,
 			INameIndexConfirmer<TStreamId> streamNameIndexConfirmer,
 			INameIndex<TStreamId> eventTypeIndex,
@@ -247,6 +255,8 @@ namespace EventStore.Core.LogAbstraction {
 			INameExistenceFilter streamExistenceFilter,
 			IExistenceFilterReader<TStreamId> streamExistenceFilterReader,
 			IRecordFactory<TStreamId> recordFactory,
+			IChunkReaderForAccumulator<TStreamId> chunkReaderForAccumulation,
+			IChunkReaderForChunkExecutor<TStreamId> chunkReaderForScavenge,
 			bool supportsExplicitTransactions,
 			Func<ITransactionFileReader,ITransactionFileWriter,IPartitionManager> partitionManagerFactory) {
 			
@@ -254,6 +264,7 @@ namespace EventStore.Core.LogAbstraction {
 
 			LowHasher = lowHasher;
 			HighHasher = highHasher;
+			LongHasher = longHasher;
 			StreamNameIndex = streamNameIndex;
 			StreamNameIndexConfirmer = streamNameIndexConfirmer;
 			EventTypeIndex = eventTypeIndex;
@@ -268,6 +279,8 @@ namespace EventStore.Core.LogAbstraction {
 			StreamExistenceFilter = streamExistenceFilter;
 			StreamExistenceFilterReader = streamExistenceFilterReader;
 			RecordFactory = recordFactory;
+			ChunkReaderForAccumulation = chunkReaderForAccumulation;
+			ChunkReaderForScavenge = chunkReaderForScavenge;
 			SupportsExplicitTransactions = supportsExplicitTransactions;
 		}
 
@@ -279,6 +292,7 @@ namespace EventStore.Core.LogAbstraction {
 
 		public IHasher<TStreamId> LowHasher { get; }
 		public IHasher<TStreamId> HighHasher { get; }
+		public ILongHasher<TStreamId> LongHasher { get; }
 		public INameIndex<TStreamId> StreamNameIndex { get; }
 		public INameIndexConfirmer<TStreamId> StreamNameIndexConfirmer { get; }
 		public INameIndex<TStreamId> EventTypeIndex { get; }
@@ -293,11 +307,14 @@ namespace EventStore.Core.LogAbstraction {
 		public INameExistenceFilter StreamExistenceFilter { get; }
 		public IExistenceFilterReader<TStreamId> StreamExistenceFilterReader { get; }
 		public IRecordFactory<TStreamId> RecordFactory { get; }
+		public IChunkReaderForAccumulator<TStreamId> ChunkReaderForAccumulation { get; }
+		public IChunkReaderForChunkExecutor<TStreamId> ChunkReaderForScavenge { get; }
 
 		public INameLookup<TStreamId> StreamNames => StreamNamesProvider.StreamNames;
 		public INameLookup<TStreamId> EventTypes => StreamNamesProvider.EventTypes;
 		public ISystemStreamLookup<TStreamId> SystemStreams => StreamNamesProvider.SystemStreams;
 		public INameExistenceFilterInitializer StreamExistenceFilterInitializer => StreamNamesProvider.StreamExistenceFilterInitializer;
+
 		public bool SupportsExplicitTransactions { get; }
 		
 		public IPartitionManager CreatePartitionManager(ITransactionFileReader reader, ITransactionFileWriter writer) {

@@ -404,6 +404,7 @@ namespace EventStore.Core.Index {
 			long droppedCount;
 
 			try {
+				//qq the output file is opened with a large buffer and for sequential scan, but the input is not
 				using (var f = new FileStream(outputFile, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
 					DefaultSequentialBufferSize, FileOptions.SequentialScan)) {
 					f.SetLength(fileSizeUpToIndexEntries);
@@ -651,9 +652,9 @@ namespace EventStore.Core.Index {
 			private bool _firstIteration = true;
 			private bool _lastIteration = false;
 
-			readonly Func<TStreamId, ulong, ulong> _upgradeHash;
-			readonly Func<IndexEntry, bool> _existsAt;
-			readonly Func<IndexEntry, Tuple<TStreamId, bool>> _readRecord;
+			readonly Func<TStreamId, ulong, ulong> _upgradeHash; // only used when upgrading ptables from V1
+			readonly Func<IndexEntry, bool> _existsAt; // only used when upgrading ptables from V1
+			readonly Func<IndexEntry, Tuple<TStreamId, bool>> _readRecord; // only for upgrading hashes
 			readonly byte _mergedPTableVersion;
 			static readonly IComparer<IndexEntry> EntryComparer = new IndexEntryComparer();
 

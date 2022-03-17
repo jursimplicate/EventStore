@@ -59,6 +59,7 @@ using MidFunc = System.Func<
 	System.Threading.Tasks.Task
 >;
 using EventStore.Core.TransactionLog.LogRecords;
+using EventStore.Core.TransactionLog.Scavenging;
 
 namespace EventStore.Core {
 	public abstract class ClusterVNode {
@@ -466,27 +467,27 @@ namespace EventStore.Core {
 					availableMem, configuredCapacity);
 
 				return new TFChunkDbConfig(dbPath,
-					new VersionedPatternFileNamingStrategy(dbPath, "chunk-"),
-					options.Database.ChunkSize,
-					cache,
-					writerChk,
-					chaserChk,
-					epochChk,
-					proposalChk,
-					truncateChk,
-					replicationChk,
-					indexChk,
-					streamExistenceFilterChk,
-					options.Database.ChunkInitialReaderCount,
-					ClusterVNodeOptions.DatabaseOptions.GetTFChunkMaxReaderCount(
+					fileNamingStrategy: new VersionedPatternFileNamingStrategy(dbPath, "chunk-"),
+					chunkSize: options.Database.ChunkSize,
+					maxChunksCacheSize: cache,
+					writerCheckpoint: writerChk,
+					chaserCheckpoint: chaserChk,
+					epochCheckpoint: epochChk,
+					proposalCheckpoint: proposalChk,
+					truncateCheckpoint: truncateChk,
+					replicationCheckpoint: replicationChk,
+					indexCheckpoint: indexChk,
+					streamExistenceFilterCheckpoint: streamExistenceFilterChk,
+					initialReaderCount: options.Database.ChunkInitialReaderCount,
+					maxReaderCount: ClusterVNodeOptions.DatabaseOptions.GetTFChunkMaxReaderCount(
 						readerThreadsCount: readerThreadsCount,
 						chunkInitialReaderCount: options.Database.ChunkInitialReaderCount),
-					options.Database.MemDb,
-					options.Database.Unbuffered,
-					options.Database.WriteThrough,
-					options.Database.OptimizeIndexMerge,
-					options.Database.ReduceFileCachePressure,
-					options.Database.MaxTruncation);
+					inMemDb: options.Database.MemDb,
+					unbuffered: options.Database.Unbuffered,
+					writethrough: options.Database.WriteThrough,
+					optimizeReadSideCache: options.Database.OptimizeIndexMerge,
+					reduceFileCachePressure: options.Database.ReduceFileCachePressure,
+					maxTruncation: options.Database.MaxTruncation);
 			}
 
 			var writerCheckpoint = Db.Config.WriterCheckpoint.Read();
@@ -1171,23 +1172,66 @@ namespace EventStore.Core {
 			perSubscrBus.Subscribe<SubscriptionMessage.PersistentSubscriptionsRestart>(persistentSubscription);
 
 			// STORAGE SCAVENGER
-			var scavengerLogManager = new TFChunkScavengerLogManager(NodeInfo.HttpEndPoint.ToString(),
-				TimeSpan.FromDays(options.Database.ScavengeHistoryMaxAge), ioDispatcher);
-			var storageScavenger = new StorageScavenger<TStreamId>(Db,
-				tableIndex,
-				readIndex,
-				logFormat.SystemStreams,
-				scavengerLogManager,
-				options.Database.AlwaysKeepScavenged,
-				!options.Database.DisableScavengeMerging,
-				unsafeIgnoreHardDeletes: options.Database.UnsafeIgnoreHardDelete);
+			var newScavenge = true; //qq make configurable
+			if (newScavenge) {
+				//qq iron this out, possibly more needs to be in the logformat, depending on what is
+				// affected by the log format ofc.
+				var accumulator = new Accumulator<TStreamId>(
+					logFormat.LongHasher,
+					logFormat.Metastreams,
+					logFormat.ChunkReaderForAccumulation);
 
-			// ReSharper disable RedundantTypeArgumentsOfMethod
-			_mainBus.Subscribe<ClientMessage.ScavengeDatabase>(storageScavenger);
-			_mainBus.Subscribe<ClientMessage.StopDatabaseScavenge>(storageScavenger);
-			_mainBus.Subscribe<SystemMessage.StateChangeMessage>(storageScavenger);
-			// ReSharper restore RedundantTypeArgumentsOfMethod
+				var calculator = new Calculator<TStreamId>(
+					new IndexForScavenge<TStreamId>(_readIndex));
 
+				var chunkExecutor = new ChunkExecutor<TStreamId>(
+					new ChunkManagerForScavenge(), //qq mock
+					logFormat.ChunkReaderForScavenge);
+
+				var indexExecutor = new IndexExecutor<TStreamId>(
+					new StuffForIndexExecutor());
+
+				var scavengeState = new ScavengeState<TStreamId>(
+					logFormat.LongHasher,
+					new InMemoryScavengeMap<TStreamId, Unit>(),
+					new InMemoryScavengeMap<ulong, MetastreamData>(),
+					new InMemoryScavengeMap<TStreamId, MetastreamData>(),
+					new InMemoryScavengeMap<ulong, DiscardPoint>(),
+					new InMemoryScavengeMap<TStreamId, DiscardPoint>(),
+					new InMemoryScavengeMap<int, long>(),
+					new InMemoryIndexReaderForAccumulator<TStreamId>());
+
+				var scavenger = new Scavenger<TStreamId>(
+					scavengeState,
+					accumulator,
+					calculator,
+					chunkExecutor,
+					indexExecutor,
+					new ScavengePointSource(Db));
+
+				var storageScavenger = new NewStorageScavenger<TStreamId>(scavenger);
+
+				_mainBus.Subscribe<ClientMessage.ScavengeDatabase>(storageScavenger);
+				_mainBus.Subscribe<ClientMessage.StopDatabaseScavenge>(storageScavenger);
+				_mainBus.Subscribe<SystemMessage.StateChangeMessage>(storageScavenger);
+			} else {
+				//qq prolly want one of these log managers or similar
+				var scavengerLogManager = new TFChunkScavengerLogManager(NodeInfo.HttpEndPoint.ToString(),
+					TimeSpan.FromDays(options.Database.ScavengeHistoryMaxAge), ioDispatcher);
+				var storageScavenger = new StorageScavenger<TStreamId>(
+					Db,
+					tableIndex,
+					readIndex,
+					logFormat.SystemStreams,
+					scavengerLogManager,
+					options.Database.AlwaysKeepScavenged,
+					!options.Database.DisableScavengeMerging,
+					unsafeIgnoreHardDeletes: options.Database.UnsafeIgnoreHardDelete);
+
+				_mainBus.Subscribe<ClientMessage.ScavengeDatabase>(storageScavenger);
+				_mainBus.Subscribe<ClientMessage.StopDatabaseScavenge>(storageScavenger);
+				_mainBus.Subscribe<SystemMessage.StateChangeMessage>(storageScavenger);
+			}
 
 			// TIMER
 			_timeProvider = new RealTimeProvider();
