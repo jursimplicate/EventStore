@@ -63,14 +63,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		void SetOriginalStreamData(StreamHandle<TStreamId> streamHandle, DiscardPoint discardPoint);
 
 		//qq consider api
-		bool TryGetHeuristic(int chunkNumber, out long heuristic);
-		void SetHeuristic(int chunkNumber, long heuristic);
+		bool TryGetChunkWeight(int chunkNumber, out long weight);
+		void SetChunkWeight(int chunkNumber, long weight);
 	}
 
 	//qq needs to work for metadata streams and also for original streams
 	// but that is easy enough because we can see if the streamid is for a metastream or not
 	public interface IScavengeStateForChunkExecutor<TStreamId> {
-		IEnumerable<ChunkHeuristic> GetChunkHeuristics(ScavengePoint scavengePoint);
+		IEnumerable<ChunkWeight> GetChunkWeights(ScavengePoint scavengePoint);
 		bool TryGetDiscardPoint(TStreamId streamId, out DiscardPoint discardPoint);
 		//qq complication around logical/physical chunks and merging?
 		bool OnChunkScavenged(int chunkNumber);

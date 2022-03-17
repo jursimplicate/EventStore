@@ -24,6 +24,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		private readonly ILongHasher<TStreamId> _hasher;
 		private readonly IIndexReaderForAccumulator<TStreamId> _indexReaderForAccumulator;
 
+		private readonly IScavengeMap<int, long> _chunkWeights;
+
 		public ScavengeState(
 			ILongHasher<TStreamId> hasher,
 			IScavengeMap<TStreamId, Unit> collisionStorage,
@@ -31,7 +33,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			IScavengeMap<TStreamId, MetastreamData> metaCollisionStorage,
 			IScavengeMap<ulong, DiscardPoint> originalStorage,
 			IScavengeMap<TStreamId, DiscardPoint> originalCollisionStorage,
-			//qq odd to pass something that is 'foraccumulator' in here
+			IScavengeMap<int, long> chunkWeights,
+			//qq odd to pass something that is called 'foraccumulator' in here
 			IIndexReaderForAccumulator<TStreamId> indexReaderForAccumulator) {
 
 			//qq inject this so that in log v3 we can have a trivial implementation
@@ -59,6 +62,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				originalStorage,
 				originalCollisionStorage);
 
+			_chunkWeights = chunkWeights;
 			_indexReaderForAccumulator = indexReaderForAccumulator;
 
 			bool HashInUseBefore(TStreamId recordStream, long recordPosition, out TStreamId candidateCollidee) {
@@ -159,16 +163,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			_originalStreamDatas.TryGetValue(streamHandle, out discardPoint);
 
-		public bool TryGetHeuristic(int chunkNumber, out long heuristic) =>
-			_chunkWeights.TryGetValue(chunkNumber, out heuristic);
+		public bool TryGetChunkWeight(int chunkNumber, out long weight) =>
+			_chunkWeights.TryGetValue(chunkNumber, out weight);
 
-		public void SetHeuristic(int chunkNumber, long heuristic) {
-			_chunkWeights[chunkNumber] = heuristic;
+		public void SetChunkWeight(int chunkNumber, long weight) {
+			_chunkWeights[chunkNumber] = weight;
 		}
 
 
-		//qqqq inject, maybe even use IScavengeMap interface for now.
-		private readonly Dictionary<int, long> _chunkWeights = new();
 
 
 
@@ -176,11 +178,12 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// FOR CHUNK EXECUTOR
 		//
 
-		public IEnumerable<ChunkHeuristic> GetChunkHeuristics(ScavengePoint scavengePoint) =>
-			_chunkWeights.Select(x => new ChunkHeuristic {
-				ChunkNumber = x.Key,
-				Weight = x.Value,
-			});
+		public IEnumerable<ChunkWeight> GetChunkWeights(ScavengePoint scavengePoint) =>
+			_chunkWeights.Select(x =>
+				new ChunkWeight {
+					ChunkNumber = x.Key,
+					Weight = x.Value,
+				});
 
 		//qq this has to work for both metadata streams and non-metadata streams
 		public bool TryGetDiscardPoint(TStreamId streamHandle, out DiscardPoint discardPoint) {

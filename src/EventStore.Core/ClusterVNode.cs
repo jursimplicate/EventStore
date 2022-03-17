@@ -1198,6 +1198,7 @@ namespace EventStore.Core {
 					new InMemoryScavengeMap<TStreamId, MetastreamData>(),
 					new InMemoryScavengeMap<ulong, DiscardPoint>(),
 					new InMemoryScavengeMap<TStreamId, DiscardPoint>(),
+					new InMemoryScavengeMap<int, long>(),
 					new InMemoryIndexReaderForAccumulator<TStreamId>());
 
 				var scavenger = new Scavenger<TStreamId>(

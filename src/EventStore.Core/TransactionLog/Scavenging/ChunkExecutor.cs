@@ -16,27 +16,27 @@
 
 			//qq would we want to run in parallel? (be careful with scavenge state interactions
 			// in that case, especially writes)
-			//qq order by the heuristic?
+			//qq order by the weight?
 			//qq do we need to do them all
 			//qq we probably wanna iterate through all the chunks though, not just the ones that we
 			// stored a weight for
 			//qq limited by a scavenge point
 
-			foreach (var chunkHeuristic in scavengeState.GetChunkHeuristics(scavengePoint)) {
-				ExecuteChunk(scavengeState, chunkHeuristic);
+			foreach (var chunkWeight in scavengeState.GetChunkWeights(scavengePoint)) {
+				ExecuteChunk(scavengeState, chunkWeight);
 				//qq careful if parallel
-				scavengeState.OnChunkScavenged(chunkHeuristic.ChunkNumber);
+				scavengeState.OnChunkScavenged(chunkWeight.ChunkNumber);
 			}
 		}
 
 		private void ExecuteChunk(
 			IScavengeStateForChunkExecutor<TStreamId> scavengeState,
-			ChunkHeuristic chunkHeuristic) {
+			ChunkWeight chunkWeight) {
 
 			//qq might this want to consider the size of the chunk too, since it may have been scavenged
 			// before
 			var threshold = 1000;
-			if (chunkHeuristic.Weight < threshold) {
+			if (chunkWeight.Weight < threshold) {
 				// they'll still (typically) be removed from the index
 				return;
 			}
@@ -68,7 +68,7 @@
 			// if physical, then we can get the physical chunk from the chunk manager and process it
 			// if logical then bear in mind that the chunk we get from the chunk manager is the whole
 			// physical file
-			var chunk = _chunkManager.GetChunk(chunkHeuristic.ChunkNumber);
+			var chunk = _chunkManager.GetChunk(chunkWeight.ChunkNumber);
 
 			//qq var newChunk = ???;
 

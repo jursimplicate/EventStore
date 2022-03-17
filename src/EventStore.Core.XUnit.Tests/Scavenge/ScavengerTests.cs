@@ -200,6 +200,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			var metaCollisionStorage = new InMemoryScavengeMap<string, MetastreamData>();
 			var originalStorage = new InMemoryScavengeMap<ulong, DiscardPoint>();
 			var originalCollisionStorage = new InMemoryScavengeMap<string, DiscardPoint>();
+			var chunkWeightStorage = new InMemoryScavengeMap<int, long>();
+
 			//qq date storage
 
 			var scavengeState = new ScavengeState<string>(
@@ -209,6 +211,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				metaCollisionStorage,
 				originalStorage,
 				originalCollisionStorage,
+				chunkWeightStorage,
 				new ScaffoldIndexReaderForAccumulator(hasher, log));
 
 			//qq we presumably want to actually get this from the log.

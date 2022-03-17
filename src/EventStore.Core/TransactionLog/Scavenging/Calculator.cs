@@ -315,9 +315,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			//qq dont go lookin it up every time, hold on to one set of chunkinstructions until we
 			// have made it to the next chunk.
-			if (!scavengeState.TryGetHeuristic(chunkNumber, out var heuristic))
-				heuristic = 0;
-			scavengeState.SetHeuristic(chunkNumber, heuristic++);
+			if (!scavengeState.TryGetChunkWeight(chunkNumber, out var weight))
+				weight = 0;
+			scavengeState.SetChunkWeight(chunkNumber, weight++);
 		}
 	}
 }

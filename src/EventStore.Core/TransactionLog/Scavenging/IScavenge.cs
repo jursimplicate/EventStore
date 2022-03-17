@@ -178,13 +178,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//	bool TryGetDiscardPoint(TStreamId streamId, out DiscardPoint discardPoint);
 	//}
 
-	public struct ChunkHeuristic {
+	public struct ChunkWeight {
 		//qq logical or phsyical?
 		public int ChunkNumber { get; init; }
 
-		//qq int or long? 
-		//qq maybe call it weight? since it isn't an exact number just a heuristic
-		public long Weight { get; init; }
+		public float Weight { get; init; }
 	}
 
 
@@ -450,7 +448,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//     - can we execute the open chunk itself?
 	//    quite possibly the answer to all these except the last is yes and still keep determinism.
 	//
-	// - to be deterministic, we may want to the chunk heuristic threshold (and other things?
+	// - to be deterministic, we may want to the chunk weight threshold (and other things?
 	//    unsafediscardtombstones?) properties of the ScavengePoint and instead of configuration options?
 	//
 	// - implications if the scavenge state is deleted, could we jump to the last scavenge point, or
@@ -461,6 +459,22 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//      them in line, or will it.
 	//    - if two nodes are at different points of the scavenge, then the chunks could be in different
 	//      states
+	//
+	// - if we delete the scavenge state and want to rebuild it (say it is corrupted in a backup, say
+	//   they took the backup while scavenge was running)
+	//   then it would be sad if we had to rerun every scavenge point
+	//   but if we can somehow jump to the last one, then perhaps a node that just hasnt been scavenged
+	//   in several points could just jump to the last one also.
+	//   in any of these cases getting the chunk version numbering right could be awkward, i wonder
+	//   whether it is important.
+	//
+	// - if we put the threshold in the scavenge points, perhaps to skip over scavenge points you just
+	//   need to min/max the threshold.
+	//
+	// - if we could get a better idea of what goes wrong when you mix and match chunks today, then we
+	//   could make sure that we could avoid those problems without being overly strict (like perhaps
+	//   the chunk version numbering isnt important, perhaps the exact way that the chunks are merged
+	//   isnt important. etc)
 
 
 
@@ -488,6 +502,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//     - stopping/resuming
 	//     - ...
 	// - implement/test the adapters that plug it in to the rest of the system
+	//     - includes extra apis to the index but they ought to not be too bad
 	// - implement/test the persistent scavengemap
 	// - integrate starting/stopping with eventstore proper
 	// - performance testing
