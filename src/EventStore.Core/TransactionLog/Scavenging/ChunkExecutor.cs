@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using EventStore.Core.LogAbstraction;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
@@ -21,15 +22,17 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		public void Execute(
 			ScavengePoint scavengePoint,
-			IScavengeStateForChunkExecutor<TStreamId> state) {
+			ScavengeCheckpoint.ExecutingChunks checkpoint,
+			IScavengeStateForChunkExecutor<TStreamId> state,
+			CancellationToken cancellationToken) {
 
 			//qq would we want to run in parallel? (be careful with scavenge state interactions
-			// in that case, especially writes)
+			// in that case, especially writes and storing checkpoints)
 			//qq order by the weight? maybe just iterate backwards.
 
 			//qq there is no point scavenging beyond the scavenge point
-			// but we coul
-			var startFromChunk = 0; //qq necessarily zero?
+			//qqqq is +1 ok range wise? same for accumulator
+			var startFromChunk = checkpoint?.DoneLogicalChunkNumber + 1 ?? 0; //qq necessarily zero?
 
 			foreach (var physicalChunk in GetAllPhysicalChunks(startFromChunk, scavengePoint.Position)) {
 				var physicalWeight = WeighPhysicalChunk(state, physicalChunk);

@@ -24,10 +24,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		private readonly IScavengeMap<int, ChunkTimeStampRange> _chunkTimeStampRanges;
 		private readonly IChunkWeightScavengeMap _chunkWeights;
+		private readonly IScavengeMap<Unit, ScavengeCheckpoint> _checkpointStorage;
 
 		private readonly ILongHasher<TStreamId> _hasher;
 		private readonly IMetastreamLookup<TStreamId> _metastreamLookup;
-
 
 		public ScavengeState(
 			ILongHasher<TStreamId> hasher,
@@ -38,6 +38,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			IScavengeMap<TStreamId, DiscardPoint> metaCollisionStorage,
 			IOriginalStreamScavengeMap<ulong> originalStorage,
 			IOriginalStreamScavengeMap<TStreamId> originalCollisionStorage,
+			//qq wanna key to store multiple checkpoints?
+			IScavengeMap<Unit, ScavengeCheckpoint> checkpointStorage,
 			IScavengeMap<int, ChunkTimeStampRange> chunkTimeStampRanges,
 			IChunkWeightScavengeMap chunkWeights) {
 
@@ -52,7 +54,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			_hasher = hasher;
 			_metastreamLookup = metastreamLookup;
-
+			_checkpointStorage = checkpointStorage;
 			_metadatastreamDiscardPoints = new CollisionMap<TStreamId, DiscardPoint>(
 				_hasher,
 				_collisionDetector.IsCollision,
@@ -72,6 +74,26 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 
 
+		public void SetCheckpoint(ScavengeCheckpoint checkpoint) {
+			_checkpointStorage[Unit.Instance] = checkpoint;
+		}
+
+		//qqqq where to wire in the json conversion
+		// and, we probably want to spot corrupt checkpoint and treat it differently to 
+		// no checkpoint. perhaps require deleting the whole scavenge state?
+		public bool TryGetCheckpoint(out ScavengeCheckpoint checkpoint) =>
+			_checkpointStorage.TryGetValue(Unit.Instance, out checkpoint);
+
+		//qqqqqqqqqqqqq not sure whether we want to use these minimally let the storage
+		// wrap everything in little transactions and just use these when necessary
+		// or wrap big chunks of things in transactions.
+		private void BeginTransaction() {
+			throw new NotImplementedException();
+		}
+
+		private void CommitTransaction() {
+			throw new NotImplementedException();
+		}
 
 
 

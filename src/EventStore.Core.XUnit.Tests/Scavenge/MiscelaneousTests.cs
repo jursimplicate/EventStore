@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using EventStore.Core.Tests.TransactionLog.Scavenging.Helpers;
 using Xunit;
 
@@ -6,8 +7,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 	// for testing functionality that isn't specific to particular discard criteria
 	public class MiscelaneousTests : ScavengerTestsBase {
 		[Fact]
-		public void metadata_first() {
-			CreateScenario(x => x
+		public async Task metadata_first() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
 					Rec.Prepare(1, "ab-1"),
@@ -15,25 +16,25 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					Rec.Prepare(3, "ab-1"),
 					Rec.Prepare(4, "ab-1"))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0].KeepIndexes(0, 4)
 					});
 		}
 
 		[Fact]
-		public void nonexistent_stream() {
-			CreateScenario(x => x
+		public async Task nonexistent_stream() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0].KeepIndexes(0)
 					});
 		}
 
 		[Fact]
-		public void multiple_streams() {
-			CreateScenario(x => x
+		public async Task multiple_streams() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
 					Rec.Prepare(1, "cd-2"),
@@ -42,38 +43,38 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					Rec.Prepare(4, "$$ab-1", "$metadata", metadata: MaxCount1),
 					Rec.Prepare(5, "$$cd-2", "$metadata", metadata: MaxCount1))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0].KeepIndexes(2, 3, 4, 5)
 					});
 		}
 
 		[Fact]
-		public void metadata_gets_scavenged() {
-			CreateScenario(x => x
+		public async Task metadata_gets_scavenged() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
 					Rec.Prepare(1, "$$ab-1", "$metadata", metadata: MaxCount2))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0].KeepIndexes(1)
 					});
 		}
 
 		[Fact]
-		public void metadata_for_metadata_stream_gets_scavenged() {
-			CreateScenario(x => x
+		public async Task metadata_for_metadata_stream_gets_scavenged() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "$$$$ab-1", "$metadata", metadata: MaxCount1),
 					Rec.Prepare(1, "$$$$ab-1", "$metadata", metadata: MaxCount2))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0].KeepIndexes(1)
 					});
 		}
 
 		[Fact]
-		public void metadata_for_metadata_stream_does_not_apply() {
-			// e.g. can't increase the maxcount to three
+		public async Task metadata_for_metadata_stream_does_not_apply() {
+			await // e.g. can't increase the maxcount to three
 			CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "$$$$ab-1", "$metadata", metadata: MaxCount3),
@@ -82,45 +83,45 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					Rec.Prepare(3, "$$ab-1"),
 					Rec.Prepare(4, "$$ab-1"))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0].KeepIndexes(0, 4)
 					});
 		}
 
 		[Fact]
-		public void metadata_metadata_applies_to_any_type() {
-			CreateScenario(x => x
+		public async Task metadata_metadata_applies_to_any_type() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "$$ab-1"),
 					Rec.Prepare(1, "$$ab-1"))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0].KeepIndexes(1)
 					});
 		}
 
 		[Fact]
-		public void metadata_in_normal_stream_is_ignored() {
-			CreateScenario(x => x
+		public async Task metadata_in_normal_stream_is_ignored() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1", "$metadata", metadata: MaxCount1),
 					Rec.Prepare(1, "ab-1"),
 					Rec.Prepare(2, "ab-1"))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 						x.Recs[0]
 					});
 		}
 
 		[Fact]
-		public void metadata_in_transaction_not_supported() {
-			var e = Assert.Throws<InvalidOperationException>(() => {
-				CreateScenario(x => x
+		public async Task metadata_in_transaction_not_supported() {
+			var e = await Assert.ThrowsAsync<InvalidOperationException>(async () => {
+				await CreateScenario(x => x
 					.Chunk(
 						Rec.TransSt(0, "$$ab-1"),
 						Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1))
 					.CompleteLastChunk())
-					.Run();
+					.RunAsync();
 			});
 
 			Assert.Equal("Found metadata in transaction in stream $$ab-1", e.Message);

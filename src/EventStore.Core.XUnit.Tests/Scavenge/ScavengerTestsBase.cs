@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using EventStore.Core.Data;
 using EventStore.Core.LogV2;
 using EventStore.Core.Tests.TransactionLog;
@@ -34,24 +36,28 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		public class Scenario {
 			private readonly Func<TFChunkDbCreationHelper, TFChunkDbCreationHelper> _createDb;
+			private string _hashingCancellationTrigger;
 
 			public Scenario(
 				Func<TFChunkDbCreationHelper, TFChunkDbCreationHelper> createDb) {
 				_createDb = createDb;
 			}
 
-			public void Run(
+			public Scenario CancelWhenHashing(string trigger) {
+				_hashingCancellationTrigger = trigger;
+				return this;
+			}
+
+			public async Task<ScavengeState<string>> RunAsync(
 				Func<DbResult, LogRecord[][]> getExpectedKeptRecords = null,
 				Func<DbResult, LogRecord[][]> getExpectedKeptIndexEntries = null) {
 
-				RunScenario(
-					x => _createDb(x).CreateDb(),
+				return await RunInternalAsync(
 					getExpectedKeptRecords,
 					getExpectedKeptIndexEntries);
 			}
 
-			private static void RunScenario(
-				Func<TFChunkDbCreationHelper, DbResult> createDb,
+			private async Task<ScavengeState<string>> RunInternalAsync(
 				Func<DbResult, LogRecord[][]> getExpectedKeptRecords,
 				Func<DbResult, LogRecord[][]> getExpectedKeptIndexEntries) {
 
@@ -60,8 +66,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				var dbConfig = TFChunkHelper.CreateDbConfig(pathName, 0, chunkSize: 1024 * 1024, memDb: true);
 
 				var dbCreator = new TFChunkDbCreationHelper(dbConfig);
-
-				var dbResult = createDb(dbCreator);
+				var dbResult = _createDb(dbCreator).CreateDb();
 				var keptRecords = getExpectedKeptRecords != null
 					? getExpectedKeptRecords(dbResult)
 					: null;
@@ -76,7 +81,15 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				// original log. will not mutate, for calculating expected results.
 				var originalLog = log.ToArray();
 
-				var hasher = new HumanReadableHasher();
+				var cancellationTokenSource = new CancellationTokenSource();
+				var hasher = new AdHocHashWrapper<string>(
+					new HumanReadableHasher(),
+					(x, continuation) => {
+						if (x == _hashingCancellationTrigger)
+							cancellationTokenSource.Cancel();
+						return continuation(x);
+					});
+
 				var metastreamLookup = new LogV2SystemStreams();
 
 				var collisionStorage = new InMemoryScavengeMap<string, Unit>();
@@ -85,6 +98,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				var metaCollisionStorage = new InMemoryScavengeMap<string, DiscardPoint>();
 				var originalStorage = new InMemoryOriginalStreamScavengeMap<ulong>();
 				var originalCollisionStorage = new InMemoryOriginalStreamScavengeMap<string>();
+				var checkpointStorage = new InMemoryScavengeMap<Unit, ScavengeCheckpoint>();
 				var chunkTimeStampRangesStorage = new InMemoryScavengeMap<int, ChunkTimeStampRange>();
 				var chunkWeightStorage = new InMemoryChunkWeightScavengeMap();
 
@@ -97,6 +111,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					metaCollisionStorage,
 					originalStorage,
 					originalCollisionStorage,
+					checkpointStorage,
 					chunkTimeStampRangesStorage,
 					chunkWeightStorage);
 
@@ -107,9 +122,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 						metastreamLookup: metastreamLookup,
 						chunkReader: new ScaffoldChunkReaderForAccumulator(log, metastreamLookup)),
 					new Calculator<string>(
-						hasher: hasher,
 						index: new ScaffoldIndexForScavenge(log, hasher),
-						metastreamLookup: metastreamLookup,
 						chunkSize: dbConfig.ChunkSize),
 					new ChunkExecutor<string, ScaffoldChunk>(
 						metastreamLookup: metastreamLookup,
@@ -122,7 +135,9 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 						streamLookup: new ScaffoldChunkReaderForIndexExecutor(log)),
 					new ScaffoldScavengePointSource(log, EffectiveNow));
 
-				sut.Start(new FakeTFScavengerLog()); //qq irl how do we know when its done
+				await sut.RunAsync(
+					new FakeTFScavengerLog(),
+					cancellationTokenSource.Token);
 
 				//qq we do some naive calculations here that are inefficient but 'obviously correct'
 				// we might want to consider breaking them out and writing some simple tests for them
@@ -276,6 +291,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					CheckIndex(keptIndexEntries, indexScavenger.Scavenged);
 				}
 
+				return scavengeState;
 			}
 
 			//qq nicked from scavengetestscenario, will probably just use that class

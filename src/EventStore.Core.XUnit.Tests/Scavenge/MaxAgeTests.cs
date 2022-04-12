@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using EventStore.Core.Tests.TransactionLog.Scavenging.Helpers;
 using Xunit;
 
@@ -6,8 +7,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 	// for testing the maxage functionality specifically
 	public class MaxAgeTests : ScavengerTestsBase {
 		[Fact]
-		public void simple_maxage() {
-			CreateScenario(x => x
+		public async Task simple_maxage() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1", timestamp: Expired),
 					Rec.Prepare(1, "ab-1", timestamp: Expired),
@@ -15,7 +16,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					Rec.Prepare(3, "ab-1", timestamp: Active),
 					Rec.Prepare(4, "$$ab-1", "$metadata", metadata: MaxAgeMetadata))
 				.CompleteLastChunk())
-				.Run(
+				.RunAsync(
 					x => new[] {
 						x.Recs[0].KeepIndexes(2, 3, 4)
 					},
@@ -25,15 +26,15 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		}
 
 		[Fact]
-		public void keep_last_event() {
-			CreateScenario(x => x
+		public async Task keep_last_event() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1", timestamp: Expired),
 					Rec.Prepare(1, "ab-1", timestamp: Expired),
 					Rec.Prepare(2, "ab-1", timestamp: Expired),
 					Rec.Prepare(3, "$$ab-1", "$metadata", metadata: MaxAgeMetadata))
 				.CompleteLastChunk())
-				.Run(
+				.RunAsync(
 					x => new[] {
 						x.Recs[0].KeepIndexes(2, 3)
 					},
@@ -43,8 +44,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		}
 
 		[Fact]
-		public void whole_chunk_expired() {
-			// the records can be removed from the chunks and the index
+		public async Task whole_chunk_expired() {
+			await // the records can be removed from the chunks and the index
 			CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1", timestamp: Expired),
@@ -54,7 +55,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					Rec.Prepare(3, "ab-1", timestamp: Active),
 					Rec.Prepare(4, "$$ab-1", "$metadata", metadata: MaxAgeMetadata))
 				.CompleteLastChunk())
-				.Run(
+				.RunAsync(
 					x => new[] {
 						x.Recs[0].KeepIndexes(),
 						x.Recs[1].KeepIndexes(0, 1),
@@ -62,8 +63,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		}
 
 		[Fact]
-		public void whole_chunk_expired_keep_last_event() {
-			// the records can be removed from the chunks and the index
+		public async Task whole_chunk_expired_keep_last_event() {
+			await // the records can be removed from the chunks and the index
 			CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1", timestamp: Expired),
@@ -72,7 +73,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				.Chunk(
 					Rec.Prepare(3, "$$ab-1", "$metadata", metadata: MaxAgeMetadata))
 				.CompleteLastChunk())
-				.Run(
+				.RunAsync(
 					x => new[] {
 						x.Recs[0].KeepIndexes(2),
 						x.Recs[1].KeepIndexes(0),
@@ -80,8 +81,8 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		}
 
 		[Fact]
-		public void whole_chunk_active() {
-			CreateScenario(x => x
+		public async Task whole_chunk_active() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1", timestamp: Active),
 					Rec.Prepare(1, "ab-1", timestamp: Active),
@@ -89,7 +90,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				.Chunk(
 					Rec.Prepare(3, "$$ab-1", "$metadata", metadata: MaxAgeMetadata))
 				.CompleteLastChunk())
-				.Run(
+				.RunAsync(
 					x => new[] {
 						x.Recs[0],
 						x.Recs[1],

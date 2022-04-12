@@ -8,6 +8,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		IScavengeStateForCalculator<TStreamId>,
 		IScavengeStateForIndexExecutor<TStreamId>,
 		IScavengeStateForChunkExecutor<TStreamId> {
+
+		bool TryGetCheckpoint(out ScavengeCheckpoint checkpoint);
 	}
 
 	//qq this summary comment will explain the general shape of the scavenge state - what it needs to be
@@ -33,7 +35,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 	// accumulator iterates through the log, spotting metadata records
 	// put in the data that the chunk and ptable scavenging require
-	public interface IScavengeStateForAccumulator<TStreamId> {
+	public interface IScavengeStateForAccumulator<TStreamId> : IScavengeStateCommon {
 		// call this for each record as we accumulate through the log so that we can spot every hash
 		// collision to save ourselves work later.
 		void DetectCollisions(TStreamId streamId);
@@ -46,7 +48,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		void SetChunkTimeStampRange(int logicalChunkNumber, ChunkTimeStampRange range);
 	}
 
-	public interface IScavengeStateForCalculatorReadOnly<TStreamId> {
+	public interface IScavengeStateForCalculatorReadOnly<TStreamId> : IScavengeStateCommon {
 		// Calculator iterates through the scavengable original streams and their metadata
 		// it doesn't need to do anything with the metadata streams, accumulator has done those.
 		IEnumerable<(StreamHandle<TStreamId>, OriginalStreamData)> OriginalStreamsToScavenge { get; }
@@ -65,18 +67,27 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		void IncreaseChunkWeight(int logicalChunkNumber, float extraWeight);
 	}
 
-	public interface IScavengeStateForChunkExecutor<TStreamId> {
+	public interface IScavengeStateForChunkExecutor<TStreamId> : IScavengeStateCommon {
 		bool TryGetChunkWeight(int logicalChunkNumber, out float weight);
 		void ResetChunkWeight(int logicalChunkNumber);
 		bool TryGetStreamExecutionDetails(TStreamId streamId, out StreamExecutionDetails details);
 		bool TryGetMetastreamDiscardPoint(TStreamId streamId, out DiscardPoint discardPoint);
 	}
 
-	public interface IScavengeStateForIndexExecutor<TStreamId> {
+	public interface IScavengeStateForIndexExecutor<TStreamId> : IScavengeStateCommon {
 		bool IsCollision(ulong streamHash);
 		//qq precondition: the streamhandle must be of the correct kind.
 		bool TryGetDiscardPoint(
 			StreamHandle<TStreamId> streamHandle,
 			out DiscardPoint discardPoint);
+	}
+
+	// all the components use these
+	public interface IScavengeStateCommon {
+		void SetCheckpoint(ScavengeCheckpoint checkpoint);
+
+		//qqqqqqq not sure about these, expose to the components, or let the scavenge state handle them internally.
+		//void BeginTransaction();
+		//void CommitTransaction();
 	}
 }

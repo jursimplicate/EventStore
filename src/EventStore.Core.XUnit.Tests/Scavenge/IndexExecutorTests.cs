@@ -1,4 +1,5 @@
-﻿using EventStore.Core.Tests.TransactionLog.Scavenging.Helpers;
+﻿using System.Threading.Tasks;
+using EventStore.Core.Tests.TransactionLog.Scavenging.Helpers;
 using Xunit;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
@@ -7,35 +8,35 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 	// for that and testing the IndexExeecutor directly would involve more mocks than it is worth.
 	public class IndexExecutorTests : ScavengerTestsBase {
 		[Fact]
-		public void nothing_to_scavenge() {
-			CreateScenario(x => x
+		public async Task nothing_to_scavenge() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
 					Rec.Prepare(1, "ab-1"),
 					Rec.Prepare(2, "ab-1"))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 					x.Recs[0].KeepIndexes(0, 1, 2)
 				});
 		}
 
 		[Fact]
-		public void simple_scavenge() {
-			CreateScenario(x => x
+		public async Task simple_scavenge() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
 					Rec.Prepare(1, "ab-1"),
 					Rec.Prepare(2, "ab-1"),
 					Rec.Prepare(3, "$$ab-1", "$metadata", metadata: MaxCount2))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 					x.Recs[0].KeepIndexes(1, 2, 3)
 				});
 		}
 
 		[Fact]
-		public void with_collision() {
-			CreateScenario(x => x
+		public async Task with_collision() {
+			await CreateScenario(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
 					Rec.Prepare(1, "cb-2"),
@@ -43,7 +44,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					Rec.Prepare(3, "ab-1"),
 					Rec.Prepare(4, "$$ab-1", "$metadata", metadata: MaxCount2))
 				.CompleteLastChunk())
-				.Run(x => new[] {
+				.RunAsync(x => new[] {
 					x.Recs[0].KeepIndexes(1, 2, 3, 4)
 				});
 		}

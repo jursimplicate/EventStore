@@ -571,9 +571,7 @@ namespace EventStore.Core {
 					new ChunkReaderForAccumulator<string>());
 
 				var calculator = new Calculator<string>(
-					longHasher,
 					new IndexReaderForCalculator(readIndex),
-					metastreamLookup,
 					TFConsts.ChunkSize);
 
 				var chunkExecutor = new ChunkExecutor<string, TFChunk>(
@@ -595,6 +593,7 @@ namespace EventStore.Core {
 					new InMemoryScavengeMap<string, DiscardPoint>(),
 					new InMemoryOriginalStreamScavengeMap<ulong>(),
 					new InMemoryOriginalStreamScavengeMap<string>(),
+					new InMemoryScavengeMap<Unit, ScavengeCheckpoint>(),
 					new InMemoryScavengeMap<int, ChunkTimeStampRange>(),
 					new InMemoryChunkWeightScavengeMap());
 

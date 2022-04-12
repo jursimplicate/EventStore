@@ -16,10 +16,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		public void Execute(
+			ScavengePoint scavengePoint,
+			ScavengeCheckpoint.ExecutingIndex checkpoint,
 			IScavengeStateForIndexExecutor<TStreamId> state,
 			IIndexScavengerLog scavengerLogger,
 			CancellationToken cancellationToken) {
 
+			//qqqqqq we could gen another function that checks if a ptable is worth scavenging at all
+			// according to whether we have already scavenged it
 			_indexScavenger.ScavengeIndex(
 				shouldKeep: GenShouldKeep(state),
 				log: scavengerLogger,
@@ -44,7 +48,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			bool ShouldKeep(IndexEntry indexEntry) {
 				//qq throttle?
-
+				//qqqq need to respect the scavenge point
 				if (currentHash != indexEntry.Stream || currentHashIsCollision) {
 					// currentHash != indexEntry.Stream || currentHashIsCollision
 					// we are on to a new stream, or the hash collides so we _might_ be on

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using EventStore.Core.LogAbstraction;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
@@ -16,7 +17,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		public void Accumulate(
 			ScavengePoint scavengePoint,
-			IScavengeStateForAccumulator<TStreamId> state) {
+			ScavengeCheckpoint.Accumulating checkpoint,
+			IScavengeStateForAccumulator<TStreamId> state,
+			CancellationToken cancellationToken) {
 
 			//qq todo finish in right place, which is at latest the last open chunk when we get there
 			// or the scavenge point.
@@ -24,8 +27,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// the chunk that has the scavenge point in because at the time the scavenge point is written
 			// that is as far as we can scavenge up to.
 
-			//qq todo start from right place
-			var logicalChunkNumber = 0;
+			var logicalChunkNumber = checkpoint?.DoneLogicalChunkNumber + 1 ?? 0;
 
 			try {
 				while (AccumulateChunkAndRecordRange(
@@ -33,6 +35,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 						state,
 						logicalChunkNumber)) {
 
+					cancellationToken.ThrowIfCancellationRequested();
 					logicalChunkNumber++;
 				}
 			}
@@ -65,6 +68,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			} else {
 				// empty range, no need to store it.
 			}
+
+			state.SetCheckpoint(new ScavengeCheckpoint.Accumulating(
+				doneLogicalChunkNumber: logicalChunkNumber));
 
 			return ret;
 		}

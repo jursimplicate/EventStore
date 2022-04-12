@@ -1,29 +1,24 @@
 ﻿using System;
-using EventStore.Core.Index.Hashes;
-using EventStore.Core.LogAbstraction;
+using System.Threading;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Calculator<TStreamId> : ICalculator<TStreamId> {
-		private readonly ILongHasher<TStreamId> _hasher;
 		private readonly IIndexReaderForCalculator<TStreamId> _index;
-		private readonly IMetastreamLookup<TStreamId> _metastreamLookup;
 		private readonly int _chunkSize;
 
 		public Calculator(
-			ILongHasher<TStreamId> hasher,
 			IIndexReaderForCalculator<TStreamId> index,
-			IMetastreamLookup<TStreamId> metastreamLookup,
 			int chunkSize) {
 
-			_hasher = hasher;
 			_index = index;
-			_metastreamLookup = metastreamLookup;
 			_chunkSize = chunkSize;
 		}
 
 		public void Calculate(
 			ScavengePoint scavengePoint,
-			IScavengeStateForCalculator<TStreamId> state) {
+			ScavengeCheckpoint.Calculating<TStreamId> checkpoint,
+			IScavengeStateForCalculator<TStreamId> state,
+			CancellationToken cancellationToken) {
 
 			var streamCalc = new StreamCalculator<TStreamId>(_index, scavengePoint);
 			var eventCalc = new EventCalculator<TStreamId>(_chunkSize, state, scavengePoint, streamCalc);
@@ -33,6 +28,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// - for each one use the accumulated data to set/update the discard points of the stream.
 			// - along the way add weight to the affected chunks.
 			foreach (var (originalStreamHandle, originalStreamData) in state.OriginalStreamsToScavenge) {
+				//qqqqqqqqqqqq the OriginalStreamsToScavenge are stored in some order for this scavengepoint
+				// need to iterate always in that order, want to pass the checkpoint through to the state
+				// to be able to pick up from where we left off.
 				//qqqqqqqqqqqqqqqqqqq
 				//qq it would be neat if this interface gave us some hint about the location of
 				// the DP so that we could set it in a moment cheaply without having to search.

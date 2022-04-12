@@ -1,4 +1,5 @@
-﻿using EventStore.Common.Utils;
+﻿using System.Threading;
+using EventStore.Common.Utils;
 using EventStore.Core.Bus;
 using EventStore.Core.Data;
 using EventStore.Core.Messages;
@@ -21,6 +22,8 @@ namespace EventStore.Core.Services.Storage {
 		private readonly IScavenger _scavenger;
 		private readonly ITFChunkScavengerLogManager _logManager;
 
+		private CancellationTokenSource _cancellationTokenSource;
+
 		public NewStorageScavenger(
 			ITFChunkScavengerLogManager logManager,
 			IScavenger scavenger) {
@@ -39,11 +42,17 @@ namespace EventStore.Core.Services.Storage {
 		}
 
 		public void Handle(ClientMessage.ScavengeDatabase message) {
-			_scavenger.Start(_logManager.CreateLog());
+			//qq if here is the right place to do so, check if scavenge is already running etc
+			_cancellationTokenSource = new CancellationTokenSource();
+			_ = _scavenger.RunAsync(
+				_logManager.CreateLog(),
+				_cancellationTokenSource.Token);
 		}
 
 		public void Handle(ClientMessage.StopDatabaseScavenge message) {
-			_scavenger.Stop();
+			//qq check it is for the right scavenge etc (see StorageScavenger.cs)
+			// if here is the right place to do so
+			_cancellationTokenSource.Cancel();
 		}
 	}
 }
