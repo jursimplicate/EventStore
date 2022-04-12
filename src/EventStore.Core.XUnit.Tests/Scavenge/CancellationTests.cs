@@ -13,6 +13,21 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		//qq add tests for cancellation as soon as each component has started
 
 		[Fact]
+		public async Task can_cancel_during_accumulation_immediate() {
+			var state = await CreateScenario(x => x
+				.Chunk(
+					Rec.Prepare(0, "cd-cancel-accumulation"))
+				.CompleteLastChunk())
+				// hacky.. the accumulator hashes things
+				.CancelWhenHashing("cd-cancel-accumulation")
+				.RunAsync();
+
+			Assert.True(state.TryGetCheckpoint(out var checkpoint));
+			var accumulating = Assert.IsType<ScavengeCheckpoint.Accumulating>(checkpoint);
+			Assert.Null(accumulating.DoneLogicalChunkNumber);
+		}
+
+		[Fact]
 		public async Task can_cancel_during_accumulation() {
 			var state = await CreateScenario(x => x
 				.Chunk(
@@ -34,6 +49,22 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		}
 
 		[Fact]
+		public async Task can_cancel_during_calculation_immediate() {
+			var state = await CreateScenario(x => x
+				.Chunk(
+					Rec.Prepare(0, "cd-cancel-calculation"),
+					Rec.Prepare(1, "cd-cancel-calculation"),
+					Rec.Prepare(2, "$$cd-cancel-calculation", metadata: MaxCount1))
+				.CompleteLastChunk())
+				.CancelWhenSettingDiscardPoints("cd-cancel-calculation")
+				.RunAsync();
+
+			Assert.True(state.TryGetCheckpoint(out var checkpoint));
+			var calculating = Assert.IsType<ScavengeCheckpoint.Calculating<string>>(checkpoint);
+			Assert.Null(calculating.DoneStreamHandle);
+		}
+
+		[Fact]
 		public async Task can_cancel_during_calculation() {
 			var state = await CreateScenario(x => x
 				.Chunk(
@@ -50,7 +81,24 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			Assert.True(state.TryGetCheckpoint(out var checkpoint));
 			var calculating = Assert.IsType<ScavengeCheckpoint.Calculating<string>>(checkpoint);
-			Assert.Equal("Hash: 100", calculating.DoneStreamHandle.ToString());
+			Assert.Equal("Hash: 98", calculating.DoneStreamHandle.ToString());
+		}
+
+		[Fact]
+		public async Task can_cancel_during_chunk_execution_immediate() {
+			var state = await CreateScenario(x => x
+				.Chunk(
+					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
+					Rec.Prepare(1, "ab-1"),
+					Rec.Prepare(2, "ab-1"),
+					Rec.Prepare(4, "cd-cancel-chunk-execution"))
+				.CompleteLastChunk())
+				.CancelWhenExecutingChunk("cd-cancel-chunk-execution")
+				.RunAsync();
+
+			Assert.True(state.TryGetCheckpoint(out var checkpoint));
+			var executing = Assert.IsType<ScavengeCheckpoint.ExecutingChunks>(checkpoint);
+			Assert.Null(executing.DoneLogicalChunkNumber);
 		}
 
 		[Fact]

@@ -93,15 +93,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 						maybeDiscardPoint: adjustedMaybeDiscardPoint);
 				}
 
+				if (++cancellationCheckCounter == _cancellationCheckPeriod) {
+					cancellationCheckCounter = 0;
+					cancellationToken.ThrowIfCancellationRequested();
+				}
+
 				if (++checkpointCounter == _checkpointPeriod) {
 					checkpointCounter = 0;
 					state.SetCheckpoint(
 						new ScavengeCheckpoint.Calculating<TStreamId>(originalStreamHandle));
-				}
-
-				if (++cancellationCheckCounter == _cancellationCheckPeriod) {
-					cancellationCheckCounter = 0;
-					cancellationToken.ThrowIfCancellationRequested();
 				}
 			}
 		}
