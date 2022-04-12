@@ -167,21 +167,26 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 					chunkTimeStampRangesStorage,
 					chunkWeightStorage);
 
+				var cancellationCheckPeriod = 1;
+
 				var sut = new Scavenger<string>(
 					scavengeState,
 					new Accumulator<string>(
 						metastreamLookup: metastreamLookup,
-						chunkReader: new ScaffoldChunkReaderForAccumulator(log, metastreamLookup)),
+						chunkReader: new ScaffoldChunkReaderForAccumulator(log, metastreamLookup),
+						cancellationCheckPeriod: cancellationCheckPeriod),
 					new Calculator<string>(
 						index: new ScaffoldIndexForScavenge(log, hasher),
 						chunkSize: dbConfig.ChunkSize,
-						streamsPerBatch: 1),
+						cancellationCheckPeriod: cancellationCheckPeriod,
+						checkpointPeriod: 1),
 					new ChunkExecutor<string, ScaffoldChunk>(
 						metastreamLookup: cancellationWrappedMetastreamLookup,
 						chunkManager: new ScaffoldChunkManagerForScavenge(
 							chunkSize: dbConfig.ChunkSize,
 							log: log),
-						chunkSize: dbConfig.ChunkSize),
+						chunkSize: dbConfig.ChunkSize,
+						cancellationCheckPeriod: cancellationCheckPeriod),
 					new IndexExecutor<string>(
 						indexScavenger: cancellationWrappedIndexScavenger,
 						streamLookup: new ScaffoldChunkReaderForIndexExecutor(log)),

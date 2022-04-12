@@ -5,16 +5,19 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Calculator<TStreamId> : ICalculator<TStreamId> {
 		private readonly IIndexReaderForCalculator<TStreamId> _index;
 		private readonly int _chunkSize;
-		private readonly int _streamsPerBatch;
+		private readonly int _cancellationCheckPeriod;
+		private readonly int _checkpointPeriod;
 
 		public Calculator(
 			IIndexReaderForCalculator<TStreamId> index,
 			int chunkSize,
-			int streamsPerBatch) {
+			int cancellationCheckPeriod,
+			int checkpointPeriod) {
 
 			_index = index;
 			_chunkSize = chunkSize;
-			_streamsPerBatch = streamsPerBatch;
+			_cancellationCheckPeriod = cancellationCheckPeriod;
+			_checkpointPeriod = checkpointPeriod;
 		}
 
 		public void Calculate(
@@ -30,7 +33,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			var streamCalc = new StreamCalculator<TStreamId>(_index, scavengePoint);
 			var eventCalc = new EventCalculator<TStreamId>(_chunkSize, state, scavengePoint, streamCalc);
-			var streamsDoneThisBatch = 0;
+
+			var checkpointCounter = 0;
+			var cancellationCheckCounter = 0;
 			// iterate through the original (i.e. non-meta) streams that need scavenging (i.e.
 			// those that have metadata or tombstones)
 			// - for each one use the accumulated data to set/update the discard points of the stream.
@@ -88,10 +93,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 						maybeDiscardPoint: adjustedMaybeDiscardPoint);
 				}
 
-				if (++streamsDoneThisBatch == _streamsPerBatch) {
-					streamsDoneThisBatch = 0;
+				if (++checkpointCounter == _checkpointPeriod) {
+					checkpointCounter = 0;
 					state.SetCheckpoint(
 						new ScavengeCheckpoint.Calculating<TStreamId>(originalStreamHandle));
+				}
+
+				if (++cancellationCheckCounter == _cancellationCheckPeriod) {
+					cancellationCheckCounter = 0;
 					cancellationToken.ThrowIfCancellationRequested();
 				}
 			}

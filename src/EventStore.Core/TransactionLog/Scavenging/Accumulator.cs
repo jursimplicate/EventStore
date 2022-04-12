@@ -6,13 +6,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Accumulator<TStreamId> : IAccumulator<TStreamId> {
 		private readonly IMetastreamLookup<TStreamId> _metastreamLookup;
 		private readonly IChunkReaderForAccumulator<TStreamId> _chunkReader;
+		private readonly int _cancellationCheckPeriod;
 
 		public Accumulator(
 			IMetastreamLookup<TStreamId> metastreamLookup,
-			IChunkReaderForAccumulator<TStreamId> chunkReader) {
+			IChunkReaderForAccumulator<TStreamId> chunkReader,
+			int cancellationCheckPeriod) {
 
 			_metastreamLookup = metastreamLookup;
 			_chunkReader = chunkReader;
+			_cancellationCheckPeriod = cancellationCheckPeriod;
 		}
 
 		public void Accumulate(
@@ -38,7 +41,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				while (AccumulateChunkAndRecordRange(
 						scavengePoint,
 						state,
-						logicalChunkNumber)) {
+						logicalChunkNumber,
+						cancellationToken)) {
 
 					cancellationToken.ThrowIfCancellationRequested();
 					logicalChunkNumber++;
@@ -55,12 +59,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		private bool AccumulateChunkAndRecordRange(
 			ScavengePoint scavengePoint,
 			IScavengeStateForAccumulator<TStreamId> state,
-			int logicalChunkNumber) {
+			int logicalChunkNumber,
+			CancellationToken cancellationToken) {
 
 			var ret = AccumulateChunk(
 				scavengePoint,
 				state,
 				logicalChunkNumber,
+				cancellationToken,
 				out var chunkMinTimeStamp,
 				out var chunkMaxTimeStamp);
 
@@ -86,6 +92,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			ScavengePoint scavengePoint,
 			IScavengeStateForAccumulator<TStreamId> state,
 			int logicalChunkNumber,
+			CancellationToken cancellationToken,
 			out DateTime chunkMinTimeStamp,
 			out DateTime chunkMaxTimeStamp) {
 
@@ -94,6 +101,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			chunkMaxTimeStamp = DateTime.MinValue;
 
 			var stopBefore = scavengePoint.Position;
+			var cancellationCheckCounter = 0;
 			foreach (var record in _chunkReader.ReadChunk(logicalChunkNumber)) {
 				if (record.LogPosition >= stopBefore) {
 					return false;
@@ -120,6 +128,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 						break;
 					default:
 						throw new NotImplementedException(); //qq
+				}
+
+				if (++cancellationCheckCounter == _cancellationCheckPeriod) {
+					cancellationCheckCounter = 0;
+					cancellationToken.ThrowIfCancellationRequested();
 				}
 			}
 

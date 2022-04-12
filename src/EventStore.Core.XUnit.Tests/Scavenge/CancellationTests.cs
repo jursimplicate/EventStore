@@ -30,8 +30,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			Assert.True(state.TryGetCheckpoint(out var checkpoint));
 			var accumulating = Assert.IsType<ScavengeCheckpoint.Accumulating>(checkpoint);
-			// accumulator completes the chunk it is on
-			Assert.Equal(1, accumulating.DoneLogicalChunkNumber);
+			Assert.Equal(0, accumulating.DoneLogicalChunkNumber);
 		}
 
 		[Fact]
@@ -71,7 +70,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			Assert.True(state.TryGetCheckpoint(out var checkpoint));
 			var executing = Assert.IsType<ScavengeCheckpoint.ExecutingChunks>(checkpoint);
-			Assert.Equal(1, executing.DoneLogicalChunkNumber);
+			Assert.Equal(0, executing.DoneLogicalChunkNumber);
 		}
 
 		[Fact]
