@@ -317,13 +317,19 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 			Scavenged = _log
 				.Select(chunk => chunk
 					.OfType<PrepareLogRecord>()
-					.Where(prepare =>
-						shouldKeep(
-							new IndexEntry(
-								stream: _hasher.Hash(prepare.EventStreamId),
-								//qq expected version -1 for transaction prepares
-								version: prepare.ExpectedVersion + 1,
-								position: prepare.LogPosition)))
+					.Where(prepare => {
+						cancellationToken.ThrowIfCancellationRequested();
+						var eventNumber = prepare.ExpectedVersion + 1;
+						if (eventNumber < 0)
+							throw new NotImplementedException("transaction handling in scaffold index.. hopefully wont have to implement this either since its temporary");
+
+						var entry = new IndexEntry(
+							stream: _hasher.Hash(prepare.EventStreamId),
+							version: eventNumber,
+							position: prepare.LogPosition);
+
+						return shouldKeep(entry);
+					})
 					.ToArray())
 				.ToArray();
 		}

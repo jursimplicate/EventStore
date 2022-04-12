@@ -39,6 +39,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			ITFChunkScavengerLog scavengerLogger,
 			CancellationToken cancellationToken) {
 
+			//qqqq something needs to write a scavengepoint into the log.. is that part of starting
+			// a scavenge when there isn't one running? perhaps need to forward the write to the leader,
+			// need to use optimistic concurrency so two nodes dont do this concurrently.
+
 			//qq similar to TFChunkScavenger.Scavenge. consider what we want to log exactly
 			return Task.Factory.StartNew(() => {
 				var sw = Stopwatch.StartNew();
@@ -76,15 +80,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			ITFChunkScavengerLog scavengerLogger,
 			CancellationToken cancellationToken) {
 
-			//qq consider exceptions (cancelled, and others)
-			//qq old scavenge starts a longrunning task prolly do that
-			//qq this would come from the log so that we can stop/resume it.
-			var scavengePoint = _scavengePointSource.GetScavengePoint();
-
 			//qq not sure, might want to do some sanity checking out here about the checkpoint in
 			// relation to the scavengepoint
 			if (!_state.TryGetCheckpoint(out var checkpoint))
 				checkpoint = null;
+
+			//qq consider exceptions (cancelled, and others)
+			//qq old scavenge starts a longrunning task prolly do that
+			//qq this would come from the log so that we can stop/resume it.
+			//qq need to get the scavenge point for our current checkpoint if we have one
+			var scavengePoint = _scavengePointSource.GetScavengePoint();
 
 			//qq whatever checkpoint we have, if any, we jump to that step and pass it in.
 			// calls to subsequent steps don't have that checkpoint. would it be better if each component
@@ -115,7 +120,19 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				cancellationToken);
 
 			//qqq merge phase
-			//qqq tidy phase
+
+			//qqq tidy phase if necessary
+			// - could remove certain parts of the scavenge state
+			// - what pieces of information can we discard and when should we discard them
+			//     - collisions (never)
+			//     - hashes (never)
+			//     - metastream discardpoints ???
+			//     - original stream data
+			//     - chunk stamp ranges for empty chunks (probably dont bother)
+			//     - chunk weights
+			//          - after executing a chunk (chunk executor will do this)
+
+			_state.SetCheckpoint(new ScavengeCheckpoint.Done());
 		}
 	}
 }

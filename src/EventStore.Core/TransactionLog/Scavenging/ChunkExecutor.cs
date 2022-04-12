@@ -26,6 +26,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			IScavengeStateForChunkExecutor<TStreamId> state,
 			CancellationToken cancellationToken) {
 
+			if (checkpoint == null) {
+				// checkpoint that we are on to chunk execution now
+				state.SetCheckpoint(new ScavengeCheckpoint.ExecutingChunks(null));
+			}
+
 			//qq would we want to run in parallel? (be careful with scavenge state interactions
 			// in that case, especially writes and storing checkpoints)
 			//qq order by the weight? maybe just iterate backwards.
@@ -50,6 +55,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					//qq when to commit/flush, immediately probably
 					state.ResetChunkWeight(logicalChunkNumber);
 				}
+
+				state.SetCheckpoint(
+					new ScavengeCheckpoint.ExecutingChunks(physicalChunk.ChunkEndNumber));
+
+				//qq old scavenge checks this after every record which is a bit eager, but 
+				// we might want to do it more often than after each physical chunk.
+				// same for accumulation
+				cancellationToken.ThrowIfCancellationRequested();
 			}
 		}
 

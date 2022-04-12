@@ -320,6 +320,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	//}
 
 	// Refers to a stream by name or by hash
+	// This struct is json serialized, don't change the names naively
 	public struct StreamHandle {
 		//qq consider specifying byte if we are going to end up with a lot of these in memory
 		public enum Kind {
@@ -743,5 +744,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		public long Position { get; set; }
 		public DateTime EffectiveNow { get; set; }
+		//qqqqqqqq public long ScavengePointNumber { get; set; }
 	}
 }

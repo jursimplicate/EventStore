@@ -37,6 +37,9 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		public class Scenario {
 			private readonly Func<TFChunkDbCreationHelper, TFChunkDbCreationHelper> _createDb;
 			private string _hashingCancellationTrigger;
+			private string _setDiscardPointsCancellationTrigger;
+			private string _executingChunkCancellationTrigger;
+			private string _executingIndexEntryCancellationTrigger;
 
 			public Scenario(
 				Func<TFChunkDbCreationHelper, TFChunkDbCreationHelper> createDb) {
@@ -45,6 +48,23 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			public Scenario CancelWhenHashing(string trigger) {
 				_hashingCancellationTrigger = trigger;
+				return this;
+			}
+
+			// note for this to work the calculator does need to set discard points for the trigger
+			// stream. i.e. it needs metadata and the discard points need to move
+			public Scenario CancelWhenSettingDiscardPoints(string trigger) {
+				_setDiscardPointsCancellationTrigger = trigger;
+				return this;
+			}
+
+			public Scenario CancelWhenExecutingChunk(string trigger) {
+				_executingChunkCancellationTrigger = trigger;
+				return this;
+			}
+
+			public Scenario CancelWhenExecutingIndexEntry(string trigger) {
+				_executingIndexEntryCancellationTrigger = trigger;
 				return this;
 			}
 
@@ -82,14 +102,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				var originalLog = log.ToArray();
 
 				var cancellationTokenSource = new CancellationTokenSource();
-				var hasher = new AdHocHashWrapper<string>(
-					new HumanReadableHasher(),
-					(x, continuation) => {
-						if (x == _hashingCancellationTrigger)
-							cancellationTokenSource.Cancel();
-						return continuation(x);
-					});
-
+				var hasher = new HumanReadableHasher();
 				var metastreamLookup = new LogV2SystemStreams();
 
 				var collisionStorage = new InMemoryScavengeMap<string, Unit>();
@@ -102,20 +115,58 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 				var chunkTimeStampRangesStorage = new InMemoryScavengeMap<int, ChunkTimeStampRange>();
 				var chunkWeightStorage = new InMemoryChunkWeightScavengeMap();
 
-				var scavengeState = new ScavengeState<string>(
+				var cancellationWrappedHasher = new AdHocHashWrapper<string>(
 					hasher,
+					(x, continuation) => {
+						if (x == _hashingCancellationTrigger)
+							cancellationTokenSource.Cancel();
+						return continuation(x);
+					});
+
+				var cancellationWrappedOriginalStorage = new AdHocOriginalStreamScavengeMapWrapper<ulong>(
+					originalStorage,
+					(continuation, key, dp1, dp2) => {
+						if (_setDiscardPointsCancellationTrigger != null &&
+							key == hasher.Hash(_setDiscardPointsCancellationTrigger)) {
+
+							cancellationTokenSource.Cancel();
+						}
+						continuation(key, dp1, dp2);
+					});
+
+				var cancellationWrappedMetastreamLookup = new AdHocMetastreamLookupWrapper<string>(
+					metastreamLookup,
+					(continuation, streamId) => {
+						if (streamId == _executingChunkCancellationTrigger)
+							cancellationTokenSource.Cancel();
+						return continuation(streamId);
+					});
+
+				var indexScavenger = new ScaffoldStuffForIndexExecutor(originalLog, hasher);
+				var cancellationWrappedIndexScavenger = new AdHocIndexScavengerWrapper(
+					indexScavenger,
+					f => entry => {
+						if (_executingIndexEntryCancellationTrigger != null &&
+							entry.Stream == hasher.Hash(_executingIndexEntryCancellationTrigger)) {
+
+							cancellationTokenSource.Cancel();
+						}
+						return f(entry);
+					});
+
+				var scavengeState = new ScavengeState<string>(
+					cancellationWrappedHasher,
 					metastreamLookup,
 					collisionStorage,
 					hashesStorage,
 					metaStorage,
 					metaCollisionStorage,
-					originalStorage,
+					cancellationWrappedOriginalStorage,
 					originalCollisionStorage,
 					checkpointStorage,
 					chunkTimeStampRangesStorage,
 					chunkWeightStorage);
 
-				var indexScavenger = new ScaffoldStuffForIndexExecutor(originalLog, hasher);
 				var sut = new Scavenger<string>(
 					scavengeState,
 					new Accumulator<string>(
@@ -123,15 +174,16 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 						chunkReader: new ScaffoldChunkReaderForAccumulator(log, metastreamLookup)),
 					new Calculator<string>(
 						index: new ScaffoldIndexForScavenge(log, hasher),
-						chunkSize: dbConfig.ChunkSize),
+						chunkSize: dbConfig.ChunkSize,
+						streamsPerBatch: 1),
 					new ChunkExecutor<string, ScaffoldChunk>(
-						metastreamLookup: metastreamLookup,
+						metastreamLookup: cancellationWrappedMetastreamLookup,
 						chunkManager: new ScaffoldChunkManagerForScavenge(
 							chunkSize: dbConfig.ChunkSize,
 							log: log),
 						chunkSize: dbConfig.ChunkSize),
 					new IndexExecutor<string>(
-						indexScavenger: indexScavenger,
+						indexScavenger: cancellationWrappedIndexScavenger,
 						streamLookup: new ScaffoldChunkReaderForIndexExecutor(log)),
 					new ScaffoldScavengePointSource(log, EffectiveNow));
 

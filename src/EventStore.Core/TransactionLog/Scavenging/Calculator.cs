@@ -5,13 +5,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public class Calculator<TStreamId> : ICalculator<TStreamId> {
 		private readonly IIndexReaderForCalculator<TStreamId> _index;
 		private readonly int _chunkSize;
+		private readonly int _streamsPerBatch;
 
 		public Calculator(
 			IIndexReaderForCalculator<TStreamId> index,
-			int chunkSize) {
+			int chunkSize,
+			int streamsPerBatch) {
 
 			_index = index;
 			_chunkSize = chunkSize;
+			_streamsPerBatch = streamsPerBatch;
 		}
 
 		public void Calculate(
@@ -20,9 +23,14 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			IScavengeStateForCalculator<TStreamId> state,
 			CancellationToken cancellationToken) {
 
+			if (checkpoint == null) {
+				// checkpoint that we are on to calculating now
+				state.SetCheckpoint(new ScavengeCheckpoint.Calculating<TStreamId>(null));
+			}
+
 			var streamCalc = new StreamCalculator<TStreamId>(_index, scavengePoint);
 			var eventCalc = new EventCalculator<TStreamId>(_chunkSize, state, scavengePoint, streamCalc);
-
+			var streamsDoneThisBatch = 0;
 			// iterate through the original (i.e. non-meta) streams that need scavenging (i.e.
 			// those that have metadata or tombstones)
 			// - for each one use the accumulated data to set/update the discard points of the stream.
@@ -72,15 +80,20 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 				if (adjustedDiscardPoint == originalStreamData.DiscardPoint &&
 					adjustedMaybeDiscardPoint == originalStreamData.MaybeDiscardPoint) {
-
 					// nothing to update for this stream
-					continue;
+				} else {
+					state.SetOriginalStreamDiscardPoints(
+						streamHandle: originalStreamHandle,
+						discardPoint: adjustedDiscardPoint,
+						maybeDiscardPoint: adjustedMaybeDiscardPoint);
 				}
 
-				state.SetOriginalStreamDiscardPoints(
-					streamHandle: originalStreamHandle,
-					discardPoint: adjustedDiscardPoint,
-					maybeDiscardPoint: adjustedMaybeDiscardPoint);
+				if (++streamsDoneThisBatch == _streamsPerBatch) {
+					streamsDoneThisBatch = 0;
+					state.SetCheckpoint(
+						new ScavengeCheckpoint.Calculating<TStreamId>(originalStreamHandle));
+					cancellationToken.ThrowIfCancellationRequested();
+				}
 			}
 		}
 

@@ -17,26 +17,29 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			Merging,
 			ExecutingIndex,
 			Tidying,
+			Done,
 		}
 
 		public Version SchemaVersion { get; set; }
 		public Stage CheckpointStage { get; set; }
-		public int DoneLogicalChunkNumber { get; set; }
-		public TStreamId DoneStreamId { get; set; }
+		public int? DoneLogicalChunkNumber { get; set; }
+		public StreamHandle<TStreamId>? DoneStreamHandle { get; set; }
 
 		public ScavengeCheckpoint ToDomain() {
 			switch (CheckpointStage) {
 				case Stage.Accumulating:
 					return new ScavengeCheckpoint.Accumulating(DoneLogicalChunkNumber);
 				case Stage.Calculating:
-					return new ScavengeCheckpoint.Calculating<TStreamId>(DoneStreamId);
+					return new ScavengeCheckpoint.Calculating<TStreamId>(DoneStreamHandle);
 				case Stage.ExecutingChunks:
 					return new ScavengeCheckpoint.ExecutingChunks(DoneLogicalChunkNumber);
 				case Stage.ExecutingIndex:
 					return new ScavengeCheckpoint.ExecutingIndex();
+				case Stage.Done:
+					return new ScavengeCheckpoint.Done();
 				//qqqqqq add other cases
 				default:
-					return default;
+					throw new ArgumentOutOfRangeException(); //qq detail
 			}
 		}
 
@@ -53,7 +56,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 				case ScavengeCheckpoint.Calculating<TStreamId> x:
 					dto.CheckpointStage = Stage.Calculating;
-					dto.DoneStreamId = x.DoneStreamId;
+					dto.DoneStreamHandle = x.DoneStreamHandle;
 					break;
 
 				case ScavengeCheckpoint.ExecutingChunks x:
@@ -64,6 +67,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				case ScavengeCheckpoint.ExecutingIndex x:
 					dto.CheckpointStage = Stage.ExecutingIndex;
 					//qq
+					break;
+
+				case ScavengeCheckpoint.Done x:
+					dto.CheckpointStage = Stage.Done;
 					break;
 
 				//qqqqqq add other cases

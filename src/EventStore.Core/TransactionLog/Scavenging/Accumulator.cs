@@ -27,6 +27,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// the chunk that has the scavenge point in because at the time the scavenge point is written
 			// that is as far as we can scavenge up to.
 
+			if (checkpoint == null) {
+				// checkpoint that we are on to accumulating now
+				state.SetCheckpoint(new ScavengeCheckpoint.Accumulating(null));
+			}
+
 			var logicalChunkNumber = checkpoint?.DoneLogicalChunkNumber + 1 ?? 0;
 
 			try {

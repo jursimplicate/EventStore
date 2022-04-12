@@ -572,7 +572,9 @@ namespace EventStore.Core {
 
 				var calculator = new Calculator<string>(
 					new IndexReaderForCalculator(readIndex),
-					TFConsts.ChunkSize);
+					chunkSize: TFConsts.ChunkSize,
+					//qq sensible number? configurable?
+					streamsPerBatch: 8096);
 
 				var chunkExecutor = new ChunkExecutor<string, TFChunk>(
 					metastreamLookup,

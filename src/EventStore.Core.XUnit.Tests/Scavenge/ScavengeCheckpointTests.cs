@@ -3,46 +3,70 @@ using Xunit;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
 	public class ScavengeCheckpointTests {
-		[Fact]
-		public void json_is_sensible() {
-			var accumulating = new ScavengeCheckpoint.Accumulating(5);
-			var json = ScavengeCheckpointJsonPersistence<string>.Serialize(accumulating);
-
-			Assert.Equal(
-				@"{""schemaVersion"":""V0"",""checkpointStage"":""Accumulating"",""doneLogicalChunkNumber"":5}",
-				json);
-		}
-
-		private T RoundTrip<T>(T input) where T : ScavengeCheckpoint {
+		private T RoundTrip<T>(T input, string expectedJson) where T : ScavengeCheckpoint {
 			var json = ScavengeCheckpointJsonPersistence<string>.Serialize(input);
 			Assert.True(ScavengeCheckpointJsonPersistence<string>.TryDeserialize(
 				json,
 				out var deserialized));
+			Assert.Equal(expectedJson, json);
 			return Assert.IsType<T>(deserialized);
 		}
 
-		[Fact]
-		public void can_round_trip_accumulating() {
-			var cp = RoundTrip(new ScavengeCheckpoint.Accumulating(5));
-			Assert.Equal(5, cp.DoneLogicalChunkNumber);
+		[Theory]
+		[InlineData(null, @"{""schemaVersion"":""V0"",""checkpointStage"":""Accumulating""}")]
+		[InlineData(5, @"{""schemaVersion"":""V0"",""checkpointStage"":""Accumulating"",""doneLogicalChunkNumber"":5}")]
+		public void can_round_trip_accumulating(int? x, string expectedJson) {
+			var cp = RoundTrip(new ScavengeCheckpoint.Accumulating(x), expectedJson);
+			Assert.Equal(x, cp.DoneLogicalChunkNumber);
 		}
 
 		[Fact]
-		public void can_round_trip_calculating() {
-			var cp = RoundTrip(new ScavengeCheckpoint.Calculating<string>("stream1"));
-			Assert.Equal("stream1", cp.DoneStreamId);
+		public void can_round_trip_calculating_null() {
+			var cp = RoundTrip(
+				new ScavengeCheckpoint.Calculating<string>(null),
+				@"{""schemaVersion"":""V0"",""checkpointStage"":""Calculating""}");
+			Assert.Null(cp.DoneStreamHandle);
 		}
 
 		[Fact]
-		public void can_round_trip_executing_chunks() {
-			var cp = RoundTrip(new ScavengeCheckpoint.ExecutingChunks(5));
-			Assert.Equal(5, cp.DoneLogicalChunkNumber);
+		public void can_round_trip_calculating_streamid() {
+			var cp = RoundTrip(
+				new ScavengeCheckpoint.Calculating<string>(StreamHandle.ForStreamId("stream1")),
+				@"{""schemaVersion"":""V0"",""checkpointStage"":""Calculating""," + 
+				@"""doneStreamHandle"":{""kind"":""Id"",""streamId"":""stream1""}}");
+			Assert.Equal("Id: stream1", cp.DoneStreamHandle.ToString());
+		}
+
+		[Fact]
+		public void can_round_trip_calculating_hash() {
+			var cp = RoundTrip(
+				new ScavengeCheckpoint.Calculating<string>(StreamHandle.ForHash<string>(97)),
+				@"{""schemaVersion"":""V0"",""checkpointStage"":""Calculating""," +
+				@"""doneStreamHandle"":{""kind"":""Hash"",""streamHash"":97}}");
+			Assert.Equal("Hash: 97", cp.DoneStreamHandle.ToString());
+		}
+
+		[Theory]
+		[InlineData(null, @"{""schemaVersion"":""V0"",""checkpointStage"":""ExecutingChunks""}")]
+		[InlineData(5, @"{""schemaVersion"":""V0"",""checkpointStage"":""ExecutingChunks"",""doneLogicalChunkNumber"":5}")]
+		public void can_round_trip_executing_chunks(int? x, string expectedJson) {
+			var cp = RoundTrip(new ScavengeCheckpoint.ExecutingChunks(x), expectedJson);
+			Assert.Equal(x, cp.DoneLogicalChunkNumber);
 		}
 
 		[Fact]
 		public void can_round_trip_executing_index() {
-			var cp = RoundTrip(new ScavengeCheckpoint.ExecutingIndex());
+			var cp = RoundTrip(
+				new ScavengeCheckpoint.ExecutingIndex(),
+				@"{""schemaVersion"":""V0"",""checkpointStage"":""ExecutingIndex""}");
 			//qq Assert.Equal();
+		}
+
+		[Fact]
+		public void can_round_trip_done() {
+			var cp = RoundTrip(
+				new ScavengeCheckpoint.Done(),
+				@"{""schemaVersion"":""V0"",""checkpointStage"":""Done""}");
 		}
 
 		//qq and the others...
