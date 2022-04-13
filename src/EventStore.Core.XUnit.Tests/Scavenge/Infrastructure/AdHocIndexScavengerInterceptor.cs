@@ -4,11 +4,11 @@ using EventStore.Core.Index;
 using EventStore.Core.TransactionLog.Scavenging;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
-	public class AdHocIndexScavengerWrapper : IIndexScavenger {
+	public class AdHocIndexScavengerInterceptor : IIndexScavenger {
 		private readonly IIndexScavenger _wrapped;
 		private readonly Func<Func<IndexEntry, bool>, Func<IndexEntry, bool>> _f;
 
-		public AdHocIndexScavengerWrapper(
+		public AdHocIndexScavengerInterceptor(
 			IIndexScavenger wrapped,
 			Func<Func<IndexEntry, bool>, Func<IndexEntry, bool>> f) {
 

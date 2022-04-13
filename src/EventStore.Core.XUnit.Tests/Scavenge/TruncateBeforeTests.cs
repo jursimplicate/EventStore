@@ -1,13 +1,14 @@
 ﻿using System.Threading.Tasks;
 using EventStore.Core.Tests.TransactionLog.Scavenging.Helpers;
 using Xunit;
+using static EventStore.Core.XUnit.Tests.Scavenge.StreamMetadatas;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
 	// for testing the truncatebefore functionality specifically
-	public class TruncateBeforeTests : ScavengerTestsBase {
+	public class TruncateBeforeTests {
 		[Fact]
 		public async Task simple_truncatebefore() {
-			await CreateScenario(x => x
+			await new Scenario().WithDb(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
 					Rec.Prepare(1, "ab-1"),
@@ -22,7 +23,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task keep_last_event() {
-			await CreateScenario(x => x
+			await new Scenario().WithDb(x => x
 				.Chunk(
 					Rec.Prepare(0, "ab-1"),
 					Rec.Prepare(1, "ab-1"),

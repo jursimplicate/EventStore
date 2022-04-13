@@ -121,7 +121,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 						ProcessOriginalStreamRecord(x, state);
 						break;
 					case RecordForAccumulator<TStreamId>.MetadataStreamRecord x:
-						ProcessMetaStreamRecord(x, state);
+						ProcessMetastreamRecord(x, state);
 						break;
 					case RecordForAccumulator<TStreamId>.TombStoneRecord x:
 						ProcessTombstone(x, state);
@@ -162,7 +162,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// the actual type of the record isn't relevant. if it is in a metadata stream it affects
 		// the metadata. if its data parses to streammetadata then thats the metadata. if it doesn't
 		// parse, then it clears the metadata.
-		private void ProcessMetaStreamRecord(
+		private void ProcessMetastreamRecord(
 			RecordForAccumulator<TStreamId>.MetadataStreamRecord record,
 			IScavengeStateForAccumulator<TStreamId> state) {
 

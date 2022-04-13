@@ -2,9 +2,10 @@
 using EventStore.Core.Tests.TransactionLog.Scavenging.Helpers;
 using EventStore.Core.TransactionLog.Scavenging;
 using Xunit;
+using static EventStore.Core.XUnit.Tests.Scavenge.StreamMetadatas;
 
 namespace EventStore.Core.XUnit.Tests.Scavenge {
-	public class CancellationTests : ScavengerTestsBase {
+	public class CancellationTests {
 		//qqqqqqqqqqqqqqqqqqqq in these tests we we want to
 		// [*] run a scavenge
 		// [*] have a particular log record trigger the cancellation of that scavenge
@@ -14,12 +15,12 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task can_cancel_during_accumulation_immediate() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "cd-cancel-accumulation"))
-				.CompleteLastChunk())
-				// hacky.. the accumulator hashes things
-				.CancelWhenHashing("cd-cancel-accumulation")
+			var (state, _) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "$$cd-cancel-accumulation"))
+					.CompleteLastChunk())
+				.CancelWhenAccumulatingMetaRecordFor("cd-cancel-accumulation")
 				.RunAsync();
 
 			Assert.True(state.TryGetCheckpoint(out var checkpoint));
@@ -29,34 +30,45 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task can_cancel_during_accumulation() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
-					Rec.Prepare(1, "ab-1"),
-					Rec.Prepare(2, "ab-1"))
-				.Chunk(
-					Rec.Prepare(3, "cd-cancel-accumulation"))
-				.Chunk(
-					Rec.Prepare(4, "ab-1"))
-				.CompleteLastChunk())
-				// hacky.. the accumulator hashes things
-				.CancelWhenHashing("cd-cancel-accumulation")
+			var (state, db) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
+						Rec.Prepare(1, "ab-1"),
+						Rec.Prepare(2, "ab-1"))
+					.Chunk(
+						Rec.Prepare(3, "$$cd-cancel-accumulation"))
+					.Chunk(
+						Rec.Prepare(4, "ab-1"))
+					.CompleteLastChunk())
+				.CancelWhenAccumulatingMetaRecordFor("cd-cancel-accumulation")
 				.RunAsync();
 
 			Assert.True(state.TryGetCheckpoint(out var checkpoint));
 			var accumulating = Assert.IsType<ScavengeCheckpoint.Accumulating>(checkpoint);
 			Assert.Equal(0, accumulating.DoneLogicalChunkNumber);
+
+			// now want to complete the scavenge
+			//qq which means we want to start from the database and index and scavenge state that
+			// we got up to last time, and then run scavenge on it.
+			// we want to create a new scenario with that state, and with different cancelation injection
+
+			//qqqqqqqq fill in
+			(state, db) = await new Scenario()
+				.WithDb(db)
+				.WithState(x => x.ExistingState(state))
+				.RunAsync();
 		}
 
 		[Fact]
 		public async Task can_cancel_during_calculation_immediate() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "cd-cancel-calculation"),
-					Rec.Prepare(1, "cd-cancel-calculation"),
-					Rec.Prepare(2, "$$cd-cancel-calculation", metadata: MaxCount1))
-				.CompleteLastChunk())
-				.CancelWhenSettingDiscardPoints("cd-cancel-calculation")
+			var (state, _) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "cd-cancel-calculation"),
+						Rec.Prepare(1, "$$cd-cancel-calculation", metadata: MaxCount1))
+					.CompleteLastChunk())
+				.CancelWhenCalculatingOriginalStream("cd-cancel-calculation")
 				.RunAsync();
 
 			Assert.True(state.TryGetCheckpoint(out var checkpoint));
@@ -66,17 +78,17 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task can_cancel_during_calculation() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
-					Rec.Prepare(1, "ab-1"),
-					Rec.Prepare(2, "ab-1"))
-				.Chunk(
-					Rec.Prepare(3, "cd-cancel-calculation"),
-					Rec.Prepare(4, "cd-cancel-calculation"),
-					Rec.Prepare(5, "$$cd-cancel-calculation", metadata: MaxCount1))
-				.CompleteLastChunk())
-				.CancelWhenSettingDiscardPoints("cd-cancel-calculation")
+			var (state, _) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
+						Rec.Prepare(1, "ab-1"),
+						Rec.Prepare(2, "ab-1"))
+					.Chunk(
+						Rec.Prepare(3, "cd-cancel-calculation"),
+						Rec.Prepare(4, "$$cd-cancel-calculation", metadata: MaxCount1))
+					.CompleteLastChunk())
+				.CancelWhenCalculatingOriginalStream("cd-cancel-calculation")
 				.RunAsync();
 
 			Assert.True(state.TryGetCheckpoint(out var checkpoint));
@@ -86,13 +98,14 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task can_cancel_during_chunk_execution_immediate() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
-					Rec.Prepare(1, "ab-1"),
-					Rec.Prepare(2, "ab-1"),
-					Rec.Prepare(4, "cd-cancel-chunk-execution"))
-				.CompleteLastChunk())
+			var (state, _) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
+						Rec.Prepare(1, "ab-1"),
+						Rec.Prepare(2, "ab-1"),
+						Rec.Prepare(4, "cd-cancel-chunk-execution"))
+					.CompleteLastChunk())
 				.CancelWhenExecutingChunk("cd-cancel-chunk-execution")
 				.RunAsync();
 
@@ -103,16 +116,17 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task can_cancel_during_chunk_execution() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
-					Rec.Prepare(1, "ab-1"),
-					Rec.Prepare(2, "ab-1"))
-				.Chunk(
-					Rec.Prepare(3, "ab-1"),
-					Rec.Prepare(4, "cd-cancel-chunk-execution"),
-					Rec.Prepare(5, "ab-1"))
-				.CompleteLastChunk())
+			var (state, _) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
+						Rec.Prepare(1, "ab-1"),
+						Rec.Prepare(2, "ab-1"))
+					.Chunk(
+						Rec.Prepare(3, "ab-1"),
+						Rec.Prepare(4, "cd-cancel-chunk-execution"),
+						Rec.Prepare(5, "ab-1"))
+					.CompleteLastChunk())
 				.CancelWhenExecutingChunk("cd-cancel-chunk-execution")
 				.RunAsync();
 
@@ -123,16 +137,17 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task can_cancel_during_index_execution() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
-					Rec.Prepare(1, "ab-1"),
-					Rec.Prepare(2, "ab-1"))
-				.Chunk(
-					Rec.Prepare(3, "ab-1"),
-					Rec.Prepare(4, "cd-cancel-index-execution"),
-					Rec.Prepare(5, "ab-1"))
-				.CompleteLastChunk())
+			var (state, _) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
+						Rec.Prepare(1, "ab-1"),
+						Rec.Prepare(2, "ab-1"))
+					.Chunk(
+						Rec.Prepare(3, "ab-1"),
+						Rec.Prepare(4, "cd-cancel-index-execution"),
+						Rec.Prepare(5, "ab-1"))
+					.CompleteLastChunk())
 				.CancelWhenExecutingIndexEntry("cd-cancel-index-execution")
 				.RunAsync();
 
@@ -142,12 +157,13 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 		[Fact]
 		public async Task can_complete() {
-			var state = await CreateScenario(x => x
-				.Chunk(
-					Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
-					Rec.Prepare(1, "ab-1"),
-					Rec.Prepare(2, "ab-1"))
-				.CompleteLastChunk())
+			var (state, _) = await new Scenario()
+				.WithDb(x => x
+					.Chunk(
+						Rec.Prepare(0, "$$ab-1", "$metadata", metadata: MaxCount1),
+						Rec.Prepare(1, "ab-1"),
+						Rec.Prepare(2, "ab-1"))
+					.CompleteLastChunk())
 				.CancelWhenExecutingIndexEntry("cd-cancel-index-execution")
 				.RunAsync();
 
