@@ -51,7 +51,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	public interface IScavengeStateForCalculatorReadOnly<TStreamId> : IScavengeStateCommon {
 		// Calculator iterates through the scavengable original streams and their metadata
 		// it doesn't need to do anything with the metadata streams, accumulator has done those.
-		IEnumerable<(StreamHandle<TStreamId>, OriginalStreamData)> OriginalStreamsToScavenge { get; }
+		//qq name
+		IEnumerable<(StreamHandle<TStreamId>, OriginalStreamData)> OriginalStreamsToScavenge(
+			StreamHandle<TStreamId> checkpoint);
 
 		bool TryGetChunkTimeStampRange(int logicaChunkNumber, out ChunkTimeStampRange range);
 	}

@@ -23,7 +23,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public Version SchemaVersion { get; set; }
 		public Stage CheckpointStage { get; set; }
 		public int? DoneLogicalChunkNumber { get; set; }
-		public StreamHandle<TStreamId>? DoneStreamHandle { get; set; }
+		public StreamHandle<TStreamId> DoneStreamHandle { get; set; }
 
 		public ScavengeCheckpoint ToDomain() {
 			switch (CheckpointStage) {

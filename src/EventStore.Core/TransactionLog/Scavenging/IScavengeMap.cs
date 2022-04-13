@@ -20,5 +20,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		TValue this[TKey key] { set; }
 		//qq we can have void Remove(TKey) if that is easier to implement
 		bool TryRemove(TKey key, out TValue value);
+		IEnumerable<KeyValuePair<TKey, TValue>> FromCheckpoint(TKey checkpoint);
 	}
 }

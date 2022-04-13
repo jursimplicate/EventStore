@@ -21,11 +21,11 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		}
 
 		[Fact]
-		public void can_round_trip_calculating_null() {
+		public void can_round_trip_calculating_default() {
 			var cp = RoundTrip(
-				new ScavengeCheckpoint.Calculating<string>(null),
+				new ScavengeCheckpoint.Calculating<string>(default),
 				@"{""schemaVersion"":""V0"",""checkpointStage"":""Calculating""}");
-			Assert.Null(cp.DoneStreamHandle);
+			Assert.Equal(default, cp.DoneStreamHandle);
 		}
 
 		[Fact]

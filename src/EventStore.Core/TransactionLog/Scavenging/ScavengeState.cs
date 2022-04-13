@@ -84,7 +84,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		public bool TryGetCheckpoint(out ScavengeCheckpoint checkpoint) =>
 			_checkpointStorage.TryGetValue(Unit.Instance, out checkpoint);
 
-		//qqqqqqqqqqqqq not sure whether we want to use these minimally let the storage
+		//qqqqqqqq not sure whether we want to use these minimally let the storage
 		// wrap everything in little transactions and just use these when necessary
 		// or wrap big chunks of things in transactions.
 		private void BeginTransaction() {
@@ -158,9 +158,13 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		// FOR CALCULATOR
 		//
 
-		//qq consider making this a method?
-		public IEnumerable<(StreamHandle<TStreamId>, OriginalStreamData)> OriginalStreamsToScavenge =>
-			_originalStreamDatas.Enumerate();
+		//qq name
+		public IEnumerable<(StreamHandle<TStreamId>, OriginalStreamData)> OriginalStreamsToScavenge(
+			StreamHandle<TStreamId> checkpoint) {
+
+			return _originalStreamDatas.Enumerate(checkpoint);
+		}
+
 
 		public void SetOriginalStreamDiscardPoints(
 			StreamHandle<TStreamId> handle,

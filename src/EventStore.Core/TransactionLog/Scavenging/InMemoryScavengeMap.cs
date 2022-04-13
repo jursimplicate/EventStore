@@ -19,7 +19,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			// naive copy so we can write to the values for the keys that we are iterating through.
 			_dict
 				.ToDictionary(x => x.Key, x => x.Value)
+				.OrderBy(x => x.Key)
 				.GetEnumerator();
+
+		public IEnumerable<KeyValuePair<TKey, TValue>> FromCheckpoint(TKey checkpoint) =>
+			// naive copy so we can write to the values for the keys that we are iterating through.
+			_dict
+				.ToDictionary(x => x.Key, x => x.Value)
+				.OrderBy(x => x.Key)
+				.SkipWhile(x => Comparer<TKey>.Default.Compare(x.Key, checkpoint) <= 0);
 
 		IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 

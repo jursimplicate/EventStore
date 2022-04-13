@@ -28,7 +28,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			if (checkpoint == null) {
 				// checkpoint that we are on to calculating now
-				state.SetCheckpoint(new ScavengeCheckpoint.Calculating<TStreamId>(null));
+				state.SetCheckpoint(new ScavengeCheckpoint.Calculating<TStreamId>(default));
 			}
 
 			var streamCalc = new StreamCalculator<TStreamId>(_index, scavengePoint);
@@ -36,14 +36,15 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			var checkpointCounter = 0;
 			var cancellationCheckCounter = 0;
+
 			// iterate through the original (i.e. non-meta) streams that need scavenging (i.e.
 			// those that have metadata or tombstones)
 			// - for each one use the accumulated data to set/update the discard points of the stream.
 			// - along the way add weight to the affected chunks.
-			foreach (var (originalStreamHandle, originalStreamData) in state.OriginalStreamsToScavenge) {
-				//qqqqqqqqqqqq the OriginalStreamsToScavenge are stored in some order for this scavengepoint
-				// need to iterate always in that order, want to pass the checkpoint through to the state
-				// to be able to pick up from where we left off.
+			var originalStreamsToScavenge = state.OriginalStreamsToScavenge(
+				checkpoint: checkpoint?.DoneStreamHandle ?? default);
+
+			foreach (var (originalStreamHandle, originalStreamData) in originalStreamsToScavenge) {
 				//qqqqqqqqqqqqqqqqqqq
 				//qq it would be neat if this interface gave us some hint about the location of
 				// the DP so that we could set it in a moment cheaply without having to search.

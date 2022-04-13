@@ -5,7 +5,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// Accumulating with null done means we are accumulating now but havent accumulated anything.
 
 	public abstract class ScavengeCheckpoint {
-		//qqqqqqqqqqqqqq need the scavengepoint number in here so we know which scavenge point we are
+		//qqqq need the scavengepoint number in here so we know which scavenge point we are
 		// working on. this node can be several scavenge points behind, and other nodes can
 		// even add new scavenge points while we are working on a different one
 		protected ScavengeCheckpoint() {
@@ -20,11 +20,11 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		public class Calculating<TStreamId> : ScavengeCheckpoint {
-			public Calculating(StreamHandle<TStreamId>? doneStreamHandle) {
+			public Calculating(StreamHandle<TStreamId> doneStreamHandle) {
 				DoneStreamHandle = doneStreamHandle;
 			}
 
-			public StreamHandle<TStreamId>? DoneStreamHandle { get; }
+			public StreamHandle<TStreamId> DoneStreamHandle { get; }
 		}
 
 		public class ExecutingChunks : ScavengeCheckpoint {
@@ -37,9 +37,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		public class ExecutingIndex : ScavengeCheckpoint {
 			public ExecutingIndex() {
-
 			}
-			// public List<Guid> DonePTables { get; } //qq could be interesting
 		}
 
 		public class Merging : ScavengeCheckpoint {

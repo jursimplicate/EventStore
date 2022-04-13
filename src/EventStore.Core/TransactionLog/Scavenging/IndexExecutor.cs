@@ -27,10 +27,8 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 				state.SetCheckpoint(new ScavengeCheckpoint.ExecutingIndex());
 			}
 
-			//qqqqqq we could gen another function that checks if a ptable is worth scavenging at all
-			// according to whether we have already scavenged it
-			//qq and a mechanism to be notified when a ptable has been scavenged
 			_indexScavenger.ScavengeIndex(
+				scavengePoint: scavengePoint.Position, //qq or maybe scavenge point number
 				shouldKeep: GenShouldKeep(state),
 				log: scavengerLogger,
 				cancellationToken: cancellationToken);

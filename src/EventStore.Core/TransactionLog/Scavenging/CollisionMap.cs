@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using EventStore.Core.Index.Hashes;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
@@ -122,16 +123,43 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			}
 		}
 
-		//qq consider name and whether this wants to be a method, and whether in fact it should return
-		// an enumerator or an enumerable
+		//qq name
 		//qq generalize so that it isn't for streams specifically
-		//qq consider if we need to cover writing happening while we enumerate
-		public IEnumerable<(StreamHandle<TKey> Handle, TValue Value)> Enumerate() {
-			foreach (var kvp in _collisions) {
+		// overall sequence is collisions ++ noncollisions
+		public IEnumerable<(StreamHandle<TKey> Handle, TValue Value)> Enumerate(
+			StreamHandle<TKey> checkpoint) {
+
+			IEnumerable<KeyValuePair<TKey, TValue>> collisionsEnumerable;
+			IEnumerable<KeyValuePair<ulong, TValue>> nonCollisionsEnumerable;
+
+			switch (checkpoint.Kind) {
+				case StreamHandle.Kind.None:
+					// no checkpoint, emit everything
+					collisionsEnumerable = _collisions;
+					nonCollisionsEnumerable = _nonCollisions;
+					break;
+
+				case StreamHandle.Kind.Id:
+					// checkpointed in the collisions. emit the rest of those, then the non-collisions
+					collisionsEnumerable = _collisions.FromCheckpoint(checkpoint.StreamId);
+					nonCollisionsEnumerable = _nonCollisions;
+					break;
+
+				case StreamHandle.Kind.Hash:
+					// checkpointed in the noncollisions. emit the rest of those
+					collisionsEnumerable = Enumerable.Empty<KeyValuePair<TKey, TValue>>();
+					nonCollisionsEnumerable = _nonCollisions.FromCheckpoint(checkpoint.StreamHash);
+					break;
+
+				default:
+					throw new Exception("thdfhrgls"); //qq argument out of range details
+			}
+
+			foreach (var kvp in collisionsEnumerable) {
 				yield return (StreamHandle.ForStreamId(kvp.Key), kvp.Value);
 			}
 
-			foreach (var kvp in _nonCollisions) {
+			foreach (var kvp in nonCollisionsEnumerable) {
 				yield return (StreamHandle.ForHash<TKey>(kvp.Key), kvp.Value);
 			}
 		}

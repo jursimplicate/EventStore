@@ -307,7 +307,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 
 			// 3b. compare to the actual handles.
 			var actual = scavengeState
-				.OriginalStreamsToScavenge
+				.OriginalStreamsToScavenge(default)
 				.Select(x => (x.Item1.ToString(), x.Item2))
 				.OrderBy(x => x.Item1);
 

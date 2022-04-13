@@ -27,6 +27,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
+		public IEnumerable<KeyValuePair<TKey, TValue>> FromCheckpoint(TKey checkpoint) =>
+			_wrapped.FromCheckpoint(checkpoint);
+
 		public bool TryGetValue(TKey key, out TValue value) {
 			if (_cache.TryGet(key, out value))
 				return true;

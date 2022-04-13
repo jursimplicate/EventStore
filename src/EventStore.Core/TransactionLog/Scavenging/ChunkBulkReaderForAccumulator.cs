@@ -201,10 +201,16 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 		}
 
 		public void ScavengeIndex(
+			long scavengePoint,
 			Func<IndexEntry, bool> shouldKeep,
 			IIndexScavengerLog log,
 			CancellationToken cancellationToken) {
 
+			//qqq pass scavengePoint into tableindex
+			// have it store it in the ptable header, and probaly min it on merge,
+			// so it can tell whether any particular ptable can be skipped with respect
+			// to a given scavenge point. in this way we save going back to the beginning
+			// if we stop the scavenge during the index execution
 			_tableIndex.Scavenge(shouldKeep, log, cancellationToken);
 		}
 	}

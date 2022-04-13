@@ -261,6 +261,7 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 	public interface IIndexScavenger {
 		void ScavengeIndex(
+			long scavengePoint,
 			Func<IndexEntry, bool> shouldKeep,
 			IIndexScavengerLog log,
 			CancellationToken cancellationToken);
@@ -734,6 +735,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 	// it being part of a transaction
 	//qq make sure we never interact with index entries beyong the scavengepoint because we don't know
 	// whether they are collisions or not
+	
+	//qq add a test that covers a chunk becoming empty on scavenge
+
 	public class ScavengePoint {
 		//qq do we want these to be explicit, or implied from the position/timestamp
 		// of the scavenge point itself? questions is whether there is any need to scavenge
@@ -744,6 +748,6 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 		public long Position { get; set; }
 		public DateTime EffectiveNow { get; set; }
-		//qqqqqqqq public long ScavengePointNumber { get; set; }
+		//qqqqq public long ScavengePointNumber { get; set; }
 	}
 }

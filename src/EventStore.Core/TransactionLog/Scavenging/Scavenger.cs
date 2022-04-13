@@ -91,48 +91,80 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			//qq need to get the scavenge point for our current checkpoint if we have one
 			var scavengePoint = _scavengePointSource.GetScavengePoint();
 
+			if (checkpoint is null || checkpoint is ScavengeCheckpoint.Accumulating)
+				Accumulate();
+			else if (checkpoint is ScavengeCheckpoint.Calculating<TStreamId>)
+				Calculate();
+			else if (checkpoint is ScavengeCheckpoint.ExecutingChunks)
+				ExecuteChunks();
+			else if (checkpoint is ScavengeCheckpoint.ExecutingIndex)
+				ExecuteIndex();
+			else if (checkpoint is ScavengeCheckpoint.ExecutingChunks)
+				ExecuteChunks();
+			else
+				throw new Exception($"unexpected checkpoint {checkpoint}"); //qq details
+
 			//qq whatever checkpoint we have, if any, we jump to that step and pass it in.
 			// calls to subsequent steps don't have that checkpoint. would it be better if each component
 			// just managed its own checkpoint and realised it had nothing to do on start
-			_accumulator.Accumulate(
-				scavengePoint,
-				checkpoint as ScavengeCheckpoint.Accumulating,
-				_state,
-				cancellationToken);
+			void Accumulate() {
+				_accumulator.Accumulate(
+					scavengePoint,
+					checkpoint as ScavengeCheckpoint.Accumulating,
+					_state,
+					cancellationToken);
 
-			_calculator.Calculate(
-				scavengePoint,
-				checkpoint as ScavengeCheckpoint.Calculating<TStreamId>,
-				_state,
-				cancellationToken);
+				Calculate();
+			}
 
-			_chunkExecutor.Execute(
-				scavengePoint,
-				checkpoint as ScavengeCheckpoint.ExecutingChunks,
-				_state,
-				cancellationToken);
+			void Calculate() {
+				_calculator.Calculate(
+					scavengePoint,
+					checkpoint as ScavengeCheckpoint.Calculating<TStreamId>,
+					_state,
+					cancellationToken);
 
-			_indexExecutor.Execute(
-				scavengePoint,
-				checkpoint as ScavengeCheckpoint.ExecutingIndex,
-				_state,
-				scavengerLogger,
-				cancellationToken);
+				ExecuteChunks();
+			}
 
-			//qqq merge phase
+			void ExecuteChunks() {
+				_chunkExecutor.Execute(
+					scavengePoint,
+					checkpoint as ScavengeCheckpoint.ExecutingChunks,
+					_state,
+					cancellationToken);
 
-			//qqq tidy phase if necessary
-			// - could remove certain parts of the scavenge state
-			// - what pieces of information can we discard and when should we discard them
-			//     - collisions (never)
-			//     - hashes (never)
-			//     - metastream discardpoints ???
-			//     - original stream data
-			//     - chunk stamp ranges for empty chunks (probably dont bother)
-			//     - chunk weights
-			//          - after executing a chunk (chunk executor will do this)
+				ExecuteIndex();
+			}
 
-			_state.SetCheckpoint(new ScavengeCheckpoint.Done());
+
+			void ExecuteIndex() {
+				_indexExecutor.Execute(
+					scavengePoint,
+					checkpoint as ScavengeCheckpoint.ExecutingIndex,
+					_state,
+					scavengerLogger,
+					cancellationToken);
+
+				Finish();
+			}
+
+			void Finish() {
+				//qqq merge phase
+
+				//qqq tidy phase if necessary
+				// - could remove certain parts of the scavenge state
+				// - what pieces of information can we discard and when should we discard them
+				//     - collisions (never)
+				//     - hashes (never)
+				//     - metastream discardpoints ???
+				//     - original stream data
+				//     - chunk stamp ranges for empty chunks (probably dont bother)
+				//     - chunk weights
+				//          - after executing a chunk (chunk executor will do this)
+
+				_state.SetCheckpoint(new ScavengeCheckpoint.Done());
+			}
 		}
 	}
 }

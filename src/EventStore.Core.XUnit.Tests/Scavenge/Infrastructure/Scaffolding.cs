@@ -310,6 +310,7 @@ namespace EventStore.Core.XUnit.Tests.Scavenge {
 		}
 
 		public void ScavengeIndex(
+			long scavengePoint,
 			Func<IndexEntry, bool> shouldKeep,
 			IIndexScavengerLog log,
 			CancellationToken cancellationToken) {
