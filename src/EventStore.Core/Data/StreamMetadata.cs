@@ -77,6 +77,16 @@ namespace EventStore.Core.Data {
 			}
 		}
 
+		public static StreamMetadata TryFromJsonBytes(byte[] json) {
+			try {
+				using (var reader = new JsonTextReader(new StreamReader(new MemoryStream(json)))) {
+					return FromJsonReader(reader);
+				}
+			} catch {
+				return Empty;
+			}
+		}
+
 		public static StreamMetadata FromJsonBytes(byte[] json) {
 			using (var reader = new JsonTextReader(new StreamReader(new MemoryStream(json)))) {
 				return FromJsonReader(reader);

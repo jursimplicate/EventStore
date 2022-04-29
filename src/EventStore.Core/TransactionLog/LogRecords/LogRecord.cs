@@ -8,7 +8,8 @@ namespace EventStore.Core.TransactionLog.LogRecords {
 	public enum LogRecordType {
 		Prepare = 0,
 		Commit = 1,
-		System = 2
+		System = 2,
+		Skipped = 3
 	}
 
 	public class LogRecordVersion {
@@ -31,22 +32,28 @@ namespace EventStore.Core.TransactionLog.LogRecords {
 			return logicalPosition - length - 2 * sizeof(int);
 		}
 
-		public static LogRecord ReadFrom(BinaryReader reader) {
+		public static LogRecord ReadFrom(BinaryReader reader) => ReadFrom(reader, ReadSpecs.Default);
+		public static LogRecord ReadFrom(BinaryReader reader, ReadSpecs readSpecs) {
 			var recordType = (LogRecordType)reader.ReadByte();
 			var version = reader.ReadByte();
 			var logPosition = reader.ReadInt64();
 
-			Ensure.Nonnegative(logPosition, "logPosition");
+			Ensure.Nonnegative(logPosition, nameof(logPosition));
 
 			switch (recordType) {
 				case LogRecordType.Prepare:
-					return new PrepareLogRecord(reader, version, logPosition);
+					if (readSpecs.ReadBasicPrepareRecords)
+						return BasicPrepareLogRecordReader.ReadFrom(reader, version, logPosition, readSpecs);
+					else
+						return new PrepareLogRecord(reader, version, logPosition);
 				case LogRecordType.Commit:
-					return new CommitLogRecord(reader, version, logPosition);
+					return readSpecs.SkipCommitRecords ?
+						(LogRecord) SkippedLogRecord.Instance : new CommitLogRecord(reader, version, logPosition);
 				case LogRecordType.System:
-					return new SystemLogRecord(reader, version, logPosition);
+					return readSpecs.SkipSystemRecords ?
+						(LogRecord) SkippedLogRecord.Instance : new SystemLogRecord(reader, version, logPosition);
 				default:
-					throw new ArgumentOutOfRangeException("recordType");
+					throw new ArgumentOutOfRangeException(nameof(recordType));
 			}
 		}
 

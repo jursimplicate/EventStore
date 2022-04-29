@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using EventStore.Core.Helpers;
 using EventStore.Core.LogAbstraction;
 
 namespace EventStore.Core.TransactionLog.Scavenging {
@@ -54,11 +55,22 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			var logicalChunkNumber = checkpoint.DoneLogicalChunkNumber + 1 ?? 0;
 			var scavengePoint = checkpoint.ScavengePoint;
 
+			// reusable objects to avoid GC pressure
+			var originalStreamRecord = new ReusableObject<RecordForAccumulator<TStreamId>.OriginalStreamRecord>(
+				() => new RecordForAccumulator<TStreamId>.OriginalStreamRecord());
+			var metadataStreamRecord = new ReusableObject<RecordForAccumulator<TStreamId>.MetadataStreamRecord>(
+				() => new RecordForAccumulator<TStreamId>.MetadataStreamRecord());
+			var tombstoneRecord = new ReusableObject<RecordForAccumulator<TStreamId>.TombStoneRecord>(
+				() => new RecordForAccumulator<TStreamId>.TombStoneRecord());
+
 			try {
 				while (AccumulateChunkAndRecordRange(
 						scavengePoint,
 						state,
 						logicalChunkNumber,
+						originalStreamRecord,
+						metadataStreamRecord,
+						tombstoneRecord,
 						cancellationToken)) {
 
 					cancellationToken.ThrowIfCancellationRequested();
@@ -77,8 +89,10 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			ScavengePoint scavengePoint,
 			IScavengeStateForAccumulator<TStreamId> state,
 			int logicalChunkNumber,
+			ReusableObject<RecordForAccumulator<TStreamId>.OriginalStreamRecord> originalStreamRecord,
+			ReusableObject<RecordForAccumulator<TStreamId>.MetadataStreamRecord> metadataStreamRecord,
+			ReusableObject<RecordForAccumulator<TStreamId>.TombStoneRecord> tombStoneRecord,
 			CancellationToken cancellationToken) {
-
 			// for correctness it is important that any particular DetectCollisions call is contained
 			// within a transaction.
 			using (var transaction = state.BeginTransaction()) {
@@ -86,6 +100,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 					scavengePoint,
 					state,
 					logicalChunkNumber,
+					originalStreamRecord,
+					metadataStreamRecord,
+					tombStoneRecord,
 					cancellationToken,
 					out var chunkMinTimeStamp,
 					out var chunkMaxTimeStamp);
@@ -114,6 +131,9 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 			ScavengePoint scavengePoint,
 			IScavengeStateForAccumulator<TStreamId> state,
 			int logicalChunkNumber,
+			ReusableObject<RecordForAccumulator<TStreamId>.OriginalStreamRecord> originalStreamRecord,
+			ReusableObject<RecordForAccumulator<TStreamId>.MetadataStreamRecord> metadataStreamRecord,
+			ReusableObject<RecordForAccumulator<TStreamId>.TombStoneRecord> tombStoneRecord,
 			CancellationToken cancellationToken,
 			out DateTime chunkMinTimeStamp,
 			out DateTime chunkMaxTimeStamp) {
@@ -124,32 +144,41 @@ namespace EventStore.Core.TransactionLog.Scavenging {
 
 			var stopBefore = scavengePoint.Position;
 			var cancellationCheckCounter = 0;
-			foreach (var record in _chunkReader.ReadChunk(logicalChunkNumber)) {
-				if (record.LogPosition >= stopBefore) {
-					return false;
-				}
+			foreach (var record in _chunkReader.ReadChunk(
+				         logicalChunkNumber,
+				         originalStreamRecord,
+				         metadataStreamRecord,
+				         tombStoneRecord)) {
+				using (record) {
+					if (record.LogPosition >= stopBefore) {
+						return false;
+					}
 
-				if (record.TimeStamp < chunkMinTimeStamp)
-					chunkMinTimeStamp = record.TimeStamp;
+					if (record.TimeStamp < chunkMinTimeStamp)
+						chunkMinTimeStamp = record.TimeStamp;
 
-				if (record.TimeStamp > chunkMaxTimeStamp)
-					chunkMaxTimeStamp = record.TimeStamp;
+					if (record.TimeStamp > chunkMaxTimeStamp)
+						chunkMaxTimeStamp = record.TimeStamp;
 
-				switch (record) {
-					//qq there may be other cases... the 'empty write', the system record (epoch)
-					// which we might still want to get the timestamp of.
-					// oh and commit records which we probably want to handle the same as prepares
-					case RecordForAccumulator<TStreamId>.OriginalStreamRecord x:
-						ProcessOriginalStreamRecord(x, state);
-						break;
-					case RecordForAccumulator<TStreamId>.MetadataStreamRecord x:
-						ProcessMetastreamRecord(x, state);
-						break;
-					case RecordForAccumulator<TStreamId>.TombStoneRecord x:
-						ProcessTombstone(x, state);
-						break;
-					default:
-						throw new NotImplementedException(); //qq
+					switch (record) {
+						//qq there may be other cases... the 'empty write', the system record (epoch)
+						// which we might still want to get the timestamp of.
+						// oh and commit records which we probably want to handle the same as prepares
+						case RecordForAccumulator<TStreamId>.OriginalStreamRecord x:
+							ProcessOriginalStreamRecord(x, state);
+							originalStreamRecord.Release();
+							break;
+						case RecordForAccumulator<TStreamId>.MetadataStreamRecord x:
+							ProcessMetastreamRecord(x, state);
+							metadataStreamRecord.Release();
+							break;
+						case RecordForAccumulator<TStreamId>.TombStoneRecord x:
+							ProcessTombstone(x, state);
+							tombStoneRecord.Release();
+							break;
+						default:
+							throw new NotImplementedException(); //qq
+					}
 				}
 
 				if (++cancellationCheckCounter == _cancellationCheckPeriod) {

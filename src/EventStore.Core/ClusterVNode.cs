@@ -562,7 +562,7 @@ namespace EventStore.Core {
 			var newScavenge = true; //qq make configurable
 			if (newScavenge) {
 				var metastreamLookup = new LogV2SystemStreams();
-
+				var streamIdConverter = new LogV2StreamIdConverter();
 				var cancellationCheckPeriod = 1024; //qq sensible?
 				//qq iron this out, possibly more needs to be in the logformat, depending on what is
 				// affected by the log format ofc.
@@ -570,7 +570,11 @@ namespace EventStore.Core {
 				var accumulator = new Accumulator<string>(
 					chunkSize: TFConsts.ChunkSize,
 					metastreamLookup: metastreamLookup,
-					chunkReader: new ChunkReaderForAccumulator<string>(),
+					chunkReader: new ChunkReaderForAccumulator<string>(
+						db.Manager,
+						metastreamLookup,
+						streamIdConverter,
+						db.Config.ReplicationCheckpoint),
 					cancellationCheckPeriod: cancellationCheckPeriod);
 
 				var calculator = new Calculator<string>(

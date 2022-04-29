@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
+using EventStore.Core.Helpers;
 using EventStore.Core.Index;
+using EventStore.Core.LogAbstraction;
+using EventStore.Core.TransactionLog.Checkpoint;
 using EventStore.Core.TransactionLog.Chunks;
 using EventStore.Core.TransactionLog.Chunks.TFChunk;
 using EventStore.Core.TransactionLog.LogRecords;
@@ -9,13 +12,91 @@ using EventStore.Core.TransactionLog.LogRecords;
 namespace EventStore.Core.TransactionLog.Scavenging {
 	//qq own files for stuff in here
 	public class ChunkReaderForAccumulator<TStreamId> : IChunkReaderForAccumulator<TStreamId> {
-		public IEnumerable<RecordForAccumulator<TStreamId>> ReadChunk(int logicalChunkNumber) {
-			throw new NotImplementedException();
+		private readonly TFChunkManager _manager;
+		private readonly IMetastreamLookup<TStreamId> _metaStreamLookup;
+		private readonly IStreamIdConverter<TStreamId> _streamIdConverter;
+		private readonly ICheckpoint _replicationChk;
+		private readonly ReadSpecs _readSpecs;
+
+		public ChunkReaderForAccumulator(
+			TFChunkManager manager,
+			IMetastreamLookup<TStreamId> metastreamLookup,
+			IStreamIdConverter<TStreamId> streamIdConverter,
+			ICheckpoint replicationChk) {
+			_manager = manager;
+			_metaStreamLookup = metastreamLookup;
+			_streamIdConverter = streamIdConverter;
+			_replicationChk = replicationChk;
+
+			// 1 kb should be more than enough to fit the largest metadata record in usual cases
+			var reusableRecordBuffer = new ReusableBuffer(1024);
+			var reusableBasicPrepare = new ReusableObject<BasicPrepareLogRecord>(() => new BasicPrepareLogRecord());
+
+			void OnRecordDispose() {
+				reusableBasicPrepare.Release();
+				reusableRecordBuffer.Release();
+			}
+
+			_readSpecs = new ReadSpecsBuilder()
+				.SkipCommitRecords()
+				.SkipSystemRecords()
+				.ReadBasicPrepareRecords(
+					(streamId, _) => _metaStreamLookup.IsMetaStream(_streamIdConverter.ToStreamId(streamId)),
+					delegate { return false; },
+					size => {
+						var buffer = reusableRecordBuffer.AcquireAsByteArray(size);
+						var basicPrepare = reusableBasicPrepare.Acquire(new BasicPrepareInitParams(buffer, OnRecordDispose));
+						return basicPrepare;
+					}
+				);
+		}
+
+		public IEnumerable<RecordForAccumulator<TStreamId>> ReadChunk(
+			int logicalChunkNumber,
+			ReusableObject<RecordForAccumulator<TStreamId>.OriginalStreamRecord> originalStreamRecord,
+			ReusableObject<RecordForAccumulator<TStreamId>.MetadataStreamRecord> metadataStreamRecord,
+			ReusableObject<RecordForAccumulator<TStreamId>.TombStoneRecord> tombStoneRecord) {
+			var chunk = _manager.GetChunk(logicalChunkNumber);
+			long globalStartPos = chunk.ChunkHeader.ChunkStartPosition;
+			long localPos = 0L;
+
+			var replicationChk = _replicationChk.ReadNonFlushed();
+			while (replicationChk == -1 ||
+			       globalStartPos + localPos < replicationChk) {
+				var result = chunk.TryReadClosestForward(localPos, _readSpecs);
+
+				if (!result.Success)
+					break;
+
+				switch (result.LogRecord.RecordType) {
+					case LogRecordType.Prepare:
+						if (!(result.LogRecord is BasicPrepareLogRecord basicPrepare))
+							throw new ArgumentOutOfRangeException(nameof(result.LogRecord), "Expected basic prepare log record.");
+						var streamId = _streamIdConverter.ToStreamId(basicPrepare.EventStreamId);
+						var initParams = new RecordForAccumulatorInitParams<TStreamId>(basicPrepare, streamId);
+						if (basicPrepare.PrepareFlags.HasFlag(PrepareFlags.DeleteTombstone)) {
+							yield return tombStoneRecord.Acquire(initParams);
+						} else if (_metaStreamLookup.IsMetaStream(streamId)) {
+							yield return metadataStreamRecord.Acquire(initParams);
+						} else {
+							yield return originalStreamRecord.Acquire(initParams);
+						}
+						break;
+					case LogRecordType.Skipped:
+						break;
+					default:
+						throw new ArgumentOutOfRangeException(nameof(result.LogRecord.RecordType),
+							$"Unexpected log record type: {result.LogRecord.RecordType}");
+				}
+
+				localPos = result.NextPosition;
+			}
 		}
 	}
 
 	public class ChunkBulkReaderForAccumulator<TStreamId> : IChunkReaderForAccumulator<TStreamId> {
-		public IEnumerable<RecordForAccumulator<TStreamId>> ReadChunk(int logicalChunkNumber) {
+		public IEnumerable<RecordForAccumulator<TStreamId>> ReadChunk(int logicalChunkNumber, ReusableObject<RecordForAccumulator<TStreamId>.OriginalStreamRecord> originalStreamRecord, ReusableObject<RecordForAccumulator<TStreamId>.MetadataStreamRecord> metadataStreamRecord,
+			ReusableObject<RecordForAccumulator<TStreamId>.TombStoneRecord> tombStoneRecord) {
 			throw new NotImplementedException();
 		}
 		/*

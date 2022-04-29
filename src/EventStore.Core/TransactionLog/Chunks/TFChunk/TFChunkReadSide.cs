@@ -18,6 +18,7 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 			RecordReadResult TryReadAt(long logicalPosition);
 			RecordReadResult TryReadFirst();
 			RecordReadResult TryReadClosestForward(long logicalPosition);
+			RecordReadResult TryReadClosestForward(long logicalPosition, ReadSpecs readSpecs);
 			RecordReadResult TryReadLast();
 			RecordReadResult TryReadClosestBackward(long logicalPosition);
 		}
@@ -40,7 +41,10 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 				return logicalPosition >= 0 && logicalPosition < Chunk.LogicalDataSize;
 			}
 
-			public RecordReadResult TryReadAt(long logicalPosition) {
+			public RecordReadResult TryReadAt(long logicalPosition) =>
+				TryReadAt(logicalPosition, ReadSpecs.Default);
+
+			private RecordReadResult TryReadAt(long logicalPosition, ReadSpecs readSpecs) {
 				var workItem = Chunk.GetReaderWorkItem();
 				try {
 					if (logicalPosition >= Chunk.LogicalDataSize) {
@@ -50,20 +54,23 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 						return RecordReadResult.Failure;
 					}
 
-					LogRecord record;
-					int length;
-					var result = TryReadForwardInternal(workItem, logicalPosition, out length, out record);
+					var result = TryReadForwardInternal(workItem, logicalPosition, readSpecs, out var length, out var record);
 					return new RecordReadResult(result, -1, record, length);
 				} finally {
 					Chunk.ReturnReaderWorkItem(workItem);
 				}
 			}
 
-			public RecordReadResult TryReadFirst() {
-				return TryReadClosestForward(0);
-			}
+			public RecordReadResult TryReadFirst() =>
+				TryReadFirst(ReadSpecs.Default);
 
-			public RecordReadResult TryReadClosestForward(long logicalPosition) {
+			private RecordReadResult TryReadFirst(ReadSpecs readSpecs) =>
+				TryReadClosestForward(0, readSpecs);
+
+			public RecordReadResult TryReadClosestForward(long logicalPosition) =>
+				TryReadClosestForward(logicalPosition, ReadSpecs.Default);
+
+			public RecordReadResult TryReadClosestForward(long logicalPosition, ReadSpecs readSpecs) {
 				var workItem = Chunk.GetReaderWorkItem();
 				try {
 					if (logicalPosition >= Chunk.LogicalDataSize)
@@ -71,7 +78,7 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 
 					int length;
 					LogRecord record;
-					if (!TryReadForwardInternal(workItem, logicalPosition, out length, out record))
+					if (!TryReadForwardInternal(workItem, logicalPosition, readSpecs, out length, out record))
 						return RecordReadResult.Failure;
 
 					long nextLogicalPos = record.GetNextLogPosition(logicalPosition, length);
@@ -262,7 +269,10 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 				return _logPositionsBloomFilter.MayExist(logicalPosition);
 			}
 
-			public RecordReadResult TryReadAt(long logicalPosition) {
+			public RecordReadResult TryReadAt(long logicalPosition) =>
+				TryReadAt(logicalPosition, ReadSpecs.Default);
+
+			private RecordReadResult TryReadAt(long logicalPosition, ReadSpecs readSpecs) {
 				var workItem = Chunk.GetReaderWorkItem();
 				try {
 					var actualPosition = TranslateExactPosition(workItem, logicalPosition);
@@ -274,9 +284,7 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 						return RecordReadResult.Failure;
 					}
 
-					LogRecord record;
-					int length;
-					var result = TryReadForwardInternal(workItem, actualPosition, out length, out record);
+					var result = TryReadForwardInternal(workItem, actualPosition, readSpecs, out var length, out var record);
 					return new RecordReadResult(result, -1, record, length);
 				} finally {
 					Chunk.ReturnReaderWorkItem(workItem);
@@ -317,11 +325,16 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 				return TranslateExactWithoutMidpoints(workItem, pos, recordRange.Lower, recordRange.Upper);
 			}
 
-			public RecordReadResult TryReadFirst() {
-				return TryReadClosestForward(0);
-			}
+			public RecordReadResult TryReadFirst() =>
+				TryReadFirst(ReadSpecs.Default);
 
-			public RecordReadResult TryReadClosestForward(long logicalPosition) {
+			private RecordReadResult TryReadFirst(ReadSpecs readSpecs) =>
+				TryReadClosestForward(0, readSpecs);
+
+			public RecordReadResult TryReadClosestForward(long logicalPosition) =>
+				TryReadClosestForward(logicalPosition, ReadSpecs.Default);
+
+			public RecordReadResult TryReadClosestForward(long logicalPosition, ReadSpecs readSpecs) {
 				if (Chunk.ChunkFooter.MapCount == 0)
 					return RecordReadResult.Failure;
 
@@ -333,7 +346,7 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 
 					int length;
 					LogRecord record;
-					if (!TryReadForwardInternal(workItem, actualPosition, out length, out record))
+					if (!TryReadForwardInternal(workItem, actualPosition, readSpecs, out length, out record))
 						return RecordReadResult.Failure;
 
 					long nextLogicalPos =
@@ -465,8 +478,8 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 				Chunk = chunk;
 			}
 
-			protected bool TryReadForwardInternal(ReaderWorkItem workItem, long actualPosition, out int length,
-				out LogRecord record) {
+			protected bool TryReadForwardInternal(ReaderWorkItem workItem, long actualPosition, ReadSpecs readSpecs,
+				out int length, out LogRecord record) {
 				length = -1;
 				record = null;
 
@@ -501,7 +514,12 @@ namespace EventStore.Core.TransactionLog.Chunks.TFChunk {
 							length, actualPosition, Chunk));
 				}
 
-				record = LogRecord.ReadFrom(workItem.Reader);
+				var startPosition = workItem.Stream.Position;
+
+				record = LogRecord.ReadFrom(workItem.Reader, readSpecs);
+
+				if (workItem.Stream.Position != startPosition + length)
+					workItem.Stream.Seek(startPosition + length, SeekOrigin.Begin);
 
 				// verify suffix length == prefix length
 				int suffixLength = workItem.Reader.ReadInt32();
