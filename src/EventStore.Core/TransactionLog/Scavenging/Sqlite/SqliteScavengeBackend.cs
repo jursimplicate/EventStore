@@ -5,6 +5,8 @@ using Microsoft.Data.Sqlite;
 namespace EventStore.Core.TransactionLog.Scavenging.Sqlite {
 	public class SqliteScavengeBackend<TStreamId> : ITransactionBackend, IDisposable {
 		private const string DbFileName = "scavenging.db";
+		private const string ExpectedJournalMode = "wal";
+		private const int ExpectedSynchronousValue = 1; // Normal
 		private SqliteConnection _connection;
 		private SqliteTransaction _transaction;
 
@@ -24,17 +26,13 @@ namespace EventStore.Core.TransactionLog.Scavenging.Sqlite {
 		}
 
 		public void Initialize(string dir = ".") {
-			Directory.CreateDirectory(dir);
-			
-			var connectionStringBuilder = new SqliteConnectionStringBuilder();
-			connectionStringBuilder.DataSource = Path.Combine(dir, DbFileName);
-			_connection = new SqliteConnection(connectionStringBuilder.ConnectionString);
-			_connection.Open();
+			OpenDbConnection(dir);
+			ConfigureFeatures();
 
 			var collisionStorage = new SqliteFixedStructScavengeMap<TStreamId, Unit>("CollisionStorageMap", _connection);
 			CollisionStorage = collisionStorage;
 
-			var hashes = new SqliteScavengeMap<ulong, TStreamId>("HashesMap", _connection); 
+			var hashes = new SqliteScavengeMap<ulong, TStreamId>("HashesMap", _connection);
 			Hashes = hashes;
 
 			var metaStorage = new SqliteFixedStructScavengeMap<ulong, DiscardPoint>("MetaStorageMap", _connection);
@@ -68,6 +66,37 @@ namespace EventStore.Core.TransactionLog.Scavenging.Sqlite {
 			}
 			
 			Commit();
+		}
+
+		private void OpenDbConnection(string dir)
+		{
+			Directory.CreateDirectory(dir);
+
+			var connectionStringBuilder = new SqliteConnectionStringBuilder();
+			connectionStringBuilder.DataSource = Path.Combine(dir, DbFileName);
+			_connection = new SqliteConnection(connectionStringBuilder.ConnectionString);
+			_connection.Open();
+		}
+
+		private void ConfigureFeatures() {
+			var cmd = _connection.CreateCommand();
+			cmd.CommandText = $"PRAGMA journal_mode={ExpectedJournalMode}";
+			cmd.ExecuteNonQuery();
+
+			cmd.CommandText = "SELECT * FROM pragma_journal_mode()";
+			var journalMode = cmd.ExecuteScalar();
+			if (journalMode == null || journalMode.ToString().ToLower() != ExpectedJournalMode) {
+				throw new Exception($"SQLite database is in unexpected journal mode: {journalMode}");
+			}
+			
+			cmd.CommandText = $"PRAGMA synchronous={ExpectedSynchronousValue}";
+			cmd.ExecuteNonQuery();
+			
+			cmd.CommandText = "SELECT * FROM pragma_synchronous()";
+			var synchronousMode = (long?)cmd.ExecuteScalar();
+			if (!synchronousMode.HasValue || synchronousMode.Value != ExpectedSynchronousValue) {
+				throw new Exception($"SQLite database is in unexpected synchronous mode: {synchronousMode}");
+			}
 		}
 
 		public void Begin() {
