@@ -1,6 +1,6 @@
 ARG CONTAINER_RUNTIME=focal
 FROM mcr.microsoft.com/dotnet/sdk:5.0-focal AS build
-ARG RUNTIME=linux-x64
+ARG RUNTIME=linux-arm64
 
 WORKDIR /build/ci
 
@@ -25,7 +25,7 @@ WORKDIR /build/src
 RUN dotnet build --configuration=Release --no-restore
 
 FROM build as test
-ARG RUNTIME=linux-x64
+ARG RUNTIME=linux-arm64
 RUN echo '#!/usr/bin/env sh\n\
 cp /build/src/EventStore.Core.Tests/Services/Transport/Tcp/test_certificates/ca/ca.pem /usr/local/share/ca-certificates/ca_eventstore_test.crt\n\
 update-ca-certificates\n\
@@ -38,17 +38,17 @@ exit $exit_code' \
 CMD ["/build/test.sh"]
 
 FROM build as publish
-ARG RUNTIME=linux-x64
+ARG RUNTIME=linux-arm64
 
 RUN dotnet publish --configuration=Release --runtime=${RUNTIME} --self-contained \
      --framework=net5.0 --output /publish EventStore.ClusterNode
 
 FROM mcr.microsoft.com/dotnet/runtime-deps:5.0-${CONTAINER_RUNTIME} AS runtime
-ARG RUNTIME=linux-x64
+ARG RUNTIME=linux-arm64
 ARG UID=1000
 ARG GID=1000
 
-RUN if [[ "${RUNTIME}" = "alpine-x64" ]];\
+RUN if [[ "${RUNTIME}" = "alpine-arm64" ]];\
     then \
         apk update && \
         apk add --no-cache \
@@ -75,15 +75,17 @@ COPY --chown=eventstore:eventstore --from=publish /publish ./
 
 RUN mkdir -p /var/lib/eventstore && \
     mkdir -p /var/log/eventstore && \
+    mkdir -p /var/lib/eventstore-index && \
+    mkdir -p /var/lib/eventstore-data && \
     mkdir -p /etc/eventstore && \
-    chown -R eventstore:eventstore /var/lib/eventstore /var/log/eventstore /etc/eventstore
+    chown -R eventstore:eventstore /var/lib/eventstore /var/log/eventstore /etc/eventstore /var/lib/eventstore-index /var/lib/eventstore-data
 
 USER eventstore
 
 RUN printf "ExtIp: 0.0.0.0\n\
 IntIp: 0.0.0.0" >> /etc/eventstore/eventstore.conf
 
-VOLUME /var/lib/eventstore /var/log/eventstore
+VOLUME /var/lib/eventstore /var/log/eventstore /var/lib/eventstore-index
 
 EXPOSE 1112/tcp 1113/tcp 2112/tcp 2113/tcp
 
